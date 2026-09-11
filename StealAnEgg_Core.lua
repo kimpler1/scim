@@ -460,6 +460,31 @@ local function firePrompt(prompt)
 	end)
 end
 
+local function plantOnEgg(egg)
+	-- CRITICAL (from video): AlignPosition left character floating over egg
+	-- while [E] Украсть was visible — hold never registered. Stop mover first.
+	clearMover()
+	local hrp = getHRP()
+	local hum = getHum()
+	local pos = eggPos(egg)
+	if not hrp or not pos then return false end
+	if hum then
+		hum.PlatformStand = false
+		hum.Sit = false
+		pcall(function()
+			hum:ChangeState(Enum.HumanoidStateType.Running)
+		end)
+	end
+	local y = groundedY(pos.X, pos.Z, pos.Y)
+	-- one soft plant on ground next to egg (not spam teleport)
+	hrp.AssemblyLinearVelocity = Vector3.zero
+	hrp.AssemblyAngularVelocity = Vector3.zero
+	hrp.CFrame = CFrame.new(pos.X, y, pos.Z)
+	faceTarget(pos)
+	task.wait(0.35)
+	return true
+end
+
 local function trySteal(egg)
 	local uid = egg.Name
 	local slotKey
@@ -468,36 +493,51 @@ local function trySteal(egg)
 		pcall(function() slotKey = BuildSlotKey(rec.AreaId, rec.NestId) end)
 	end
 
-	-- stand still right next to egg so server sees proximity
-	local pos = eggPos(egg)
-	if pos then
-		moveToPosition(Vector3.new(pos.X, pos.Y, pos.Z), CFG.finalApproachSpeed, 3, CFG.finalArriveDist)
-		faceTarget(pos)
-		task.wait(0.25)
-	end
+	plantOnEgg(egg)
 
+	local prompt = findPrompt(egg)
 	local deadline = tick() + CFG.stealTimeout
 	while tick() < deadline and autoFarm and not carrying do
+		-- keep planted (guards / physics may shove)
+		local hrp = getHRP()
+		local pos = eggPos(egg)
+		if hrp and pos and (hrp.Position - pos).Magnitude > 4 then
+			plantOnEgg(egg)
+		end
+
 		if CarryFn then
 			local ok, res = pcall(function() return CarryFn(uid, slotKey) end)
 			if ok and res == true then carrying = true end
 		end
-		firePrompt(findPrompt(egg))
+
+		-- real hold for full HoldDuration — server validates this
+		if prompt and prompt.Parent then
+			local hold = tonumber(prompt.HoldDuration) or CFG.stealHold
+			pcall(function()
+				prompt:InputHoldBegin()
+			end)
+			task.wait(math.max(hold, CFG.stealHold) + 0.15)
+			pcall(function()
+				prompt:InputHoldEnd()
+			end)
+			if typeof(fireproximityprompt) == "function" then
+				pcall(fireproximityprompt, prompt)
+			end
+		else
+			prompt = findPrompt(egg)
+			task.wait(0.2)
+		end
+
 		refreshCarry()
-		if carrying then return true end
-		task.wait(0.12)
+		if carrying then
+			setStatus("Stolen")
+			setupMover() -- re-enable for escape
+			return true
+		end
+		task.wait(0.1)
 	end
 
-	local prompt = findPrompt(egg)
-	if prompt and not carrying then
-		local hold = prompt.HoldDuration
-		pcall(function()
-			prompt:InputHoldBegin()
-			task.wait(math.max(hold, CFG.stealHold))
-			prompt:InputHoldEnd()
-		end)
-		refreshCarry()
-	end
+	setupMover()
 	return carrying
 end
 

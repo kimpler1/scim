@@ -46,8 +46,8 @@ local BIOMES = {
 }
 
 local selectedBiome = 1
-local approachSpeed = 110
-local escapeSpeed = 340
+local approachSpeed = 60
+local escapeSpeed = 130
 local statusLbl, biomeLbl, farmBtn, espBtn
 local coreApi
 local coreLoaded = false
@@ -225,7 +225,7 @@ local hint = Instance.new("TextLabel")
 hint.Size = UDim2.new(0.9, 0, 0, 18)
 hint.Position = UDim2.new(0.05, 0, 0, 222)
 hint.BackgroundTransparency = 1
-hint.Text = "Approach | Escape (core loads on Auto)"
+hint.Text = "Approach | Escape  (use 60 / 130)"
 hint.Font = Enum.Font.Gotham
 hint.TextSize = 11
 hint.TextColor3 = Color3.fromRGB(140, 140, 150)
@@ -243,7 +243,7 @@ statusLbl.TextColor3 = Color3.fromRGB(180, 180, 190)
 statusLbl.TextXAlignment = Enum.TextXAlignment.Left
 statusLbl.TextYAlignment = Enum.TextYAlignment.Top
 statusLbl.Parent = main
-statusLbl.Text = ("Safe panel. mount=%s\nWait 15s. If no kick — OK.\nThen press Auto."):format(tostring(howMount))
+statusLbl.Text = ("Safe panel. mount=%s\nDefaults 60/130. Wait 10s then Auto."):format(tostring(howMount))
 
 if not okMount then
 	statusLbl.Text = "UI mount FAIL"
