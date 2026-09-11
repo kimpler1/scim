@@ -1,7 +1,7 @@
 --[[
-  Steal An Egg — Core v10
-  Movement = hub-style fly (CFrame step + zero velocity), NOT AlignPosition.
-  Anti-death = humanoid clone (kills PushBack from chicken/guards).
+  Steal An Egg — Core v11
+  Fly = upright CFrame step (no lookAt NaN). No humanoid destroy/clone.
+  Ground plant only when raycast hits — avoids void / ragdoll sky.
 ]]
 
 local Players = game:GetService("Players")
@@ -17,15 +17,15 @@ local CFG = {
 		"Forest", "Lake", "Desert", "Jungle", "Snow", "Volcano",
 		"Abyss Ocean", "Prehistoric", "Cosmic", "Cherry Blossom", "Titan Temple",
 	},
-	approachSpeed = 90,   -- studs/sec fly
-	escapeSpeed = 140,
-	arriveDist = 3,
-	finalArriveDist = 1.8,
+	approachSpeed = 70,
+	escapeSpeed = 110,
+	arriveDist = 3.5,
+	finalArriveDist = 2.2,
 	stealTimeout = 5,
 	stealHold = 1.1,
 	stepTimeout = 25,
 	baseWait = 2.2,
-	flyHeight = 4,        -- above ground along lane (dodge chicken)
+	flyHeight = 6,
 	status = function() end,
 }
 
@@ -137,41 +137,37 @@ local function getHum()
 	return c and c:FindFirstChildOfClass("Humanoid")
 end
 
--- Boblo-style: clone humanoid so chicken PushBack dies with old humanoid
-local function swapStealHumanoid()
+-- Kill PushBack scripts only. Destroying Humanoid = ragdoll void (v10 bug).
+local function disablePushScripts()
 	local char = getChar()
 	if not char then return false end
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if not hum then return false end
-	if hum:GetAttribute("SAE_SafeHum") == true then return true end
-
 	for _, d in ipairs(char:GetDescendants()) do
-		if d:IsA("LocalScript") and string.find(d.Name, "Push", 1, true) then
-			pcall(function()
-				d.Disabled = true
-				d:Destroy()
-			end)
+		if d:IsA("LocalScript") then
+			local n = d.Name:lower()
+			if n:find("push", 1, true) or n:find("knock", 1, true) then
+				pcall(function()
+					d.Disabled = true
+					d:Destroy()
+				end)
+			end
 		end
 	end
-
-	hum.Archivable = true
-	local clone = hum:Clone()
-	if not clone then return false end
-	clone:SetAttribute("SAE_SafeHum", true)
-	clone.Sit = false
-	clone.PlatformStand = false
-	clone.AutoRotate = true
-	hum:Destroy()
-	clone.Parent = char
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	if hrp then
-		hrp.AssemblyLinearVelocity = Vector3.zero
-		hrp.AssemblyAngularVelocity = Vector3.zero
-	end
-	pcall(function()
-		clone:ChangeState(Enum.HumanoidStateType.Running)
-	end)
 	return true
+end
+
+local function isFiniteVec(v)
+	return typeof(v) == "Vector3"
+		and v.X == v.X and v.Y == v.Y and v.Z == v.Z
+		and math.abs(v.X) < 1e5 and math.abs(v.Y) < 1e5 and math.abs(v.Z) < 1e5
+end
+
+local function uprightAt(pos, lookFlat)
+	local look = lookFlat or Vector3.new(0, 0, -1)
+	look = Vector3.new(look.X, 0, look.Z)
+	if look.Magnitude < 0.05 then
+		return CFrame.new(pos)
+	end
+	return CFrame.lookAt(pos, pos + look.Unit)
 end
 
 local function setNoclip(on)
@@ -237,13 +233,29 @@ local function groundedY(x, z, fallback)
 end
 
 local function anchor(hrp, cf)
+	if not hrp or not cf then return end
+	local p = cf.Position
+	if not isFiniteVec(p) then return end
 	hrp.CFrame = cf
 	hrp.AssemblyLinearVelocity = Vector3.zero
 	hrp.AssemblyAngularVelocity = Vector3.zero
 end
 
--- Hub-style fly: each frame CFrame += dir * speed * dt, velocity forced 0
+local function restoreWalk()
+	setNoclip(false)
+	local hum = getHum()
+	if hum then
+		hum.PlatformStand = false
+		hum.Sit = false
+		pcall(function()
+			hum:ChangeState(Enum.HumanoidStateType.Running)
+		end)
+	end
+end
+
+-- Hub-style fly: upright CFrame steps only (lookAt(next,target) NaN = void)
 local function flyTo(targetPos, speed, timeout, arrive)
+	if not isFiniteVec(targetPos) then return false end
 	local deadline = tick() + (timeout or CFG.stepTimeout)
 	local arriveDist = arrive or CFG.arriveDist
 	setNoclip(true)
@@ -251,19 +263,22 @@ local function flyTo(targetPos, speed, timeout, arrive)
 	while tick() < deadline and autoFarm do
 		local hrp = getHRP()
 		local hum = getHum()
-		if not hrp then
+		if not hrp or not isFiniteVec(hrp.Position) then
 			task.wait(0.05)
 		else
 			if hum then
 				hum.Sit = false
-				hum.PlatformStand = true -- fly mode like Boblo
+				hum.PlatformStand = true
 			end
-			-- keep Y on fly height
 			local y = groundedY(targetPos.X, targetPos.Z, targetPos.Y)
 			local target = Vector3.new(targetPos.X, y, targetPos.Z)
 			local delta = target - hrp.Position
+			if not isFiniteVec(delta) then
+				restoreWalk()
+				return false
+			end
 			if delta.Magnitude <= arriveDist then
-				anchor(hrp, CFrame.new(target))
+				anchor(hrp, uprightAt(target, delta))
 				return true
 			end
 			local dt = RunService.Heartbeat:Wait()
@@ -273,10 +288,17 @@ local function flyTo(targetPos, speed, timeout, arrive)
 			y = groundedY(targetPos.X, targetPos.Z, targetPos.Y)
 			target = Vector3.new(targetPos.X, y, targetPos.Z)
 			delta = target - hrp.Position
+			if delta.Magnitude < 1e-3 or not isFiniteVec(delta) then
+				anchor(hrp, uprightAt(target))
+				return true
+			end
 			local step = math.min(delta.Magnitude, speed * dt)
 			local nextPos = hrp.Position + delta.Unit * step
-			local look = CFrame.lookAt(nextPos, target)
-			anchor(hrp, look)
+			if not isFiniteVec(nextPos) then
+				restoreWalk()
+				return false
+			end
+			anchor(hrp, uprightAt(nextPos, delta))
 		end
 	end
 	return false
@@ -402,18 +424,31 @@ end
 
 local function faceTarget(targetPos)
 	local hrp = getHRP()
-	if not hrp then return end
-	local flat = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
-	local cf = CFrame.lookAt(hrp.Position, flat)
-	anchor(hrp, CFrame.new(hrp.Position) * (cf - cf.Position))
+	if not hrp or not isFiniteVec(targetPos) then return end
+	local look = Vector3.new(targetPos.X - hrp.Position.X, 0, targetPos.Z - hrp.Position.Z)
+	anchor(hrp, uprightAt(hrp.Position, look))
 end
 
 local function plantOnEgg(egg)
-	setNoclip(false)
 	local hrp = getHRP()
 	local hum = getHum()
 	local pos = eggPos(egg)
-	if not hrp or not pos then return false end
+	if not hrp or not pos or not isFiniteVec(pos) then return false end
+
+	-- stay flying/noclip until ground confirmed — otherwise fall into void
+	local origin = Vector3.new(pos.X, pos.Y + 60, pos.Z)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { getChar() }
+	local hit = Workspace:Raycast(origin, Vector3.new(0, -120, 0), params)
+	if not hit then
+		setStatus("No ground")
+		return false
+	end
+
+	local y = hit.Position.Y + 3
+	anchor(hrp, uprightAt(Vector3.new(pos.X, y, pos.Z), Vector3.new(0, 0, -1)))
+	setNoclip(false)
 	if hum then
 		hum.PlatformStand = false
 		hum.Sit = false
@@ -421,16 +456,8 @@ local function plantOnEgg(egg)
 			hum:ChangeState(Enum.HumanoidStateType.Running)
 		end)
 	end
-	-- plant ON ground (not fly height)
-	local origin = Vector3.new(pos.X, pos.Y + 40, pos.Z)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { getChar() }
-	local hit = Workspace:Raycast(origin, Vector3.new(0, -80, 0), params)
-	local y = hit and (hit.Position.Y + 3) or pos.Y
-	anchor(hrp, CFrame.new(pos.X, y, pos.Z))
 	faceTarget(pos)
-	task.wait(0.3)
+	task.wait(0.25)
 	return true
 end
 
@@ -508,7 +535,7 @@ local function returnToBase(speed)
 end
 
 local function farmOnce()
-	swapStealHumanoid()
+	disablePushScripts()
 	refreshCarry()
 
 	if carrying then
@@ -519,9 +546,7 @@ local function farmOnce()
 			if isInPlot() or not carrying then break end
 			RunService.Heartbeat:Wait()
 		end
-		setNoclip(false)
-		local hum = getHum()
-		if hum then hum.PlatformStand = false end
+		restoreWalk()
 		carrying = false
 		return
 	end
@@ -533,6 +558,7 @@ local function farmOnce()
 		setStatus("To " .. biome)
 		if not travelAlong(buildLanePath(hrp.Position, center), CFG.approachSpeed) then
 			setStatus("Fly abort")
+			restoreWalk()
 			return
 		end
 	end
@@ -549,12 +575,14 @@ local function farmOnce()
 	setStatus("Approach")
 	if not hrp or not pos or not travelAlong(buildLanePath(hrp.Position, pos), CFG.approachSpeed) then
 		setStatus("Approach abort")
+		restoreWalk()
 		return
 	end
 
 	setStatus("Grab")
 	if not trySteal(egg) then
 		setStatus("Miss")
+		restoreWalk()
 		task.wait(0.25)
 		return
 	end
@@ -569,9 +597,7 @@ local function farmOnce()
 		if not carrying then break end
 		RunService.Heartbeat:Wait()
 	end
-	setNoclip(false)
-	local hum = getHum()
-	if hum then hum.PlatformStand = false end
+	restoreWalk()
 	carrying = false
 	setStatus("OK")
 end
@@ -579,23 +605,26 @@ end
 local function startFarmLoop()
 	if farmBusy then return end
 	farmBusy = true
-	swapStealHumanoid()
-	-- keep velocity zeroed while farming (anti rubberband / anti fling)
+	disablePushScripts()
 	local velGuard = RunService.Heartbeat:Connect(function()
 		if not autoFarm then return end
 		local hrp = getHRP()
 		if hrp then
-			-- only kill vertical spikes; horizontal from our fly is rewritten next frame
+			local p = hrp.Position
+			if not isFiniteVec(p) then
+				restoreWalk()
+				return
+			end
 			local v = hrp.AssemblyLinearVelocity
-			if math.abs(v.Y) > 30 then
+			if math.abs(v.Y) > 40 then
 				hrp.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
 			end
 		end
 		if noclipOn then
 			local char = getChar()
 			if char then
-				for _, p in ipairs(char:GetChildren()) do
-					if p:IsA("BasePart") then p.CanCollide = false end
+				for _, part in ipairs(char:GetChildren()) do
+					if part:IsA("BasePart") then part.CanCollide = false end
 				end
 			end
 		end
@@ -607,13 +636,12 @@ local function startFarmLoop()
 			local ok, err = pcall(farmOnce)
 			if not ok then
 				setStatus("Err " .. tostring(err))
+				restoreWalk()
 				task.wait(0.4)
 			end
 			task.wait(0.1)
 		end
-		setNoclip(false)
-		local hum = getHum()
-		if hum then hum.PlatformStand = false end
+		restoreWalk()
 		farmBusy = false
 	end)
 end
@@ -715,15 +743,15 @@ function Api.setConfig(t)
 	if typeof(t) ~= "table" then return end
 	if t.biomeIndex then CFG.biomeIndex = t.biomeIndex end
 	if t.biomes then CFG.biomes = t.biomes end
-	if t.approachSpeed then CFG.approachSpeed = math.clamp(t.approachSpeed, 40, 220) end
-	if t.escapeSpeed then CFG.escapeSpeed = math.clamp(t.escapeSpeed, 60, 280) end
+	if t.approachSpeed then CFG.approachSpeed = math.clamp(t.approachSpeed, 40, 180) end
+	if t.escapeSpeed then CFG.escapeSpeed = math.clamp(t.escapeSpeed, 50, 220) end
 	if typeof(t.status) == "function" then CFG.status = t.status end
 end
 
 function Api.startFarm()
 	bindGame()
-	swapStealHumanoid()
-	setStatus(("Bound E=%s P=%s Eggs=%s"):format(
+	disablePushScripts()
+	setStatus(("v11 Bound E=%s P=%s Eggs=%s"):format(
 		EggState and "Y" or "N",
 		PlotState and "Y" or "N",
 		AreaEggs and "Y" or "N"
@@ -734,9 +762,7 @@ end
 
 function Api.stopFarm()
 	autoFarm = false
-	setNoclip(false)
-	local hum = getHum()
-	if hum then hum.PlatformStand = false end
+	restoreWalk()
 	setStatus("Auto off")
 end
 
@@ -756,7 +782,7 @@ end
 function Api.destroy()
 	autoFarm = false
 	espOn = false
-	setNoclip(false)
+	restoreWalk()
 	clearEsp()
 	for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
 	connections = {}
@@ -764,7 +790,7 @@ end
 
 LP.CharacterAdded:Connect(function()
 	task.wait(0.4)
-	if autoFarm then swapStealHumanoid() end
+	if autoFarm then disablePushScripts() end
 end)
 
 return Api
