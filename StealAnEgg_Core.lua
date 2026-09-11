@@ -1,7 +1,6 @@
 --[[
-  Steal An Egg — Core (loaded by Panel via HttpGet)
-  Do NOT execute this file alone in the executor.
-  Returns API table: setConfig, startFarm, stopFarm, setEsp, destroy
+  Steal An Egg — Core v7 (physics-based movement, no CFrame teleport spam)
+  Loaded by Panel via HttpGet.
 ]]
 
 local Players = game:GetService("Players")
@@ -17,12 +16,12 @@ local CFG = {
 		"Forest", "Lake", "Desert", "Jungle", "Snow", "Volcano",
 		"Abyss Ocean", "Prehistoric", "Cosmic", "Cherry Blossom", "Titan Temple",
 	},
-	approachSpeed = 110,
-	escapeSpeed = 340,
-	arriveDist = 3.5,
-	stealTimeout = 3.5,
-	stealHold = 0.8,
-	stepTimeout = 18,
+	approachSpeed = 75,    -- lowered: smooth legit speed
+	escapeSpeed = 180,     -- lowered: avoids teleport rubberband
+	arriveDist = 4,
+	stealTimeout = 4,
+	stealHold = 0.9,
+	stepTimeout = 20,
 	status = function() end,
 }
 
@@ -34,6 +33,7 @@ local Bound = false
 local autoFarm, espOn, carrying, farmBusy = false, false, false, false
 local connections, espMap = {}, {}
 local espFolder, velConn, espConn, carryConn
+local moverAlign, moverAtt
 
 local function setStatus(t)
 	CFG.status(t)
@@ -184,62 +184,104 @@ local function getLaneY()
 end
 
 local function groundedY(x, z, fallback)
-	local origin = Vector3.new(x, (fallback or getLaneY()) + 60, z)
+	local origin = Vector3.new(x, (fallback or getLaneY()) + 80, z)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	local char = getChar()
 	params.FilterDescendantsInstances = char and { char } or {}
-	local hit = Workspace:Raycast(origin, Vector3.new(0, -160, 0), params)
+	local hit = Workspace:Raycast(origin, Vector3.new(0, -200, 0), params)
 	if hit then return hit.Position.Y + 3 end
 	return fallback or getLaneY()
 end
 
-local function anchor(hrp, cf)
-	hrp.CFrame = cf
-	hrp.AssemblyLinearVelocity = Vector3.zero
-	hrp.AssemblyAngularVelocity = Vector3.zero
+local function clearMover()
+	if moverAlign then pcall(function() moverAlign:Destroy() end) end
+	if moverAtt then pcall(function() moverAtt:Destroy() end) end
+	moverAlign, moverAtt = nil, nil
 end
 
-local function moveXZ(tx, tz, speed, timeout)
+local function setupMover()
+	clearMover()
+	local hrp = getHRP()
+	if not hrp then return false end
+	local char = getChar()
+	if not char then return false end
+
+	local att = Instance.new("Attachment")
+	att.Name = "SAE" .. tostring(math.random(10000, 99999))
+	att.Position = Vector3.zero
+	att.Parent = hrp
+
+	local align = Instance.new("AlignPosition")
+	align.Mode = Enum.PositionAlignmentMode.OneAttachment
+	align.Attachment0 = att
+	align.RigidityEnabled = false
+	align.ReactionForceEnabled = false
+	align.ApplyAtCenterOfMass = false
+	align.MaxForce = 1e7
+	align.MaxVelocity = CFG.approachSpeed
+	align.Responsiveness = 25
+	align.Parent = hrp
+
+	local alignRot = Instance.new("AlignOrientation")
+	alignRot.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	alignRot.Attachment0 = att
+	alignRot.RigidityEnabled = false
+	alignRot.MaxTorque = 5e6
+	alignRot.Responsiveness = 15
+	alignRot.Parent = hrp
+
+	moverAtt = att
+	moverAlign = { align, alignRot }
+	return true
+end
+
+local function moveToPosition(targetPos, speed, timeout)
 	local deadline = tick() + (timeout or CFG.stepTimeout)
+	if not moverAlign or not moverAtt then
+		setupMover()
+	end
+	local hrp = getHRP()
+	if not hrp or not moverAlign then return false end
+
+	moverAlign[1].MaxVelocity = speed
+	moverAlign[1].Position = targetPos
+
 	while tick() < deadline and autoFarm do
-		local hrp = getHRP()
-		local hum = getHum()
-		if not hrp then
-			task.wait(0.05)
-		else
-			if hum then hum.Sit = false hum.PlatformStand = false end
-			local y = groundedY(tx, tz, hrp.Position.Y)
-			local target = Vector3.new(tx, y, tz)
-			local delta = Vector3.new(target.X - hrp.Position.X, 0, target.Z - hrp.Position.Z)
-			if delta.Magnitude <= CFG.arriveDist then
-				anchor(hrp, CFrame.new(target))
-				return true
-			end
-			local dt = RunService.Heartbeat:Wait()
-			if typeof(dt) ~= "number" or dt <= 0 then dt = 1 / 60 end
-			hrp = getHRP()
-			if not hrp then return false end
-			y = groundedY(tx, tz, hrp.Position.Y)
-			target = Vector3.new(tx, y, tz)
-			delta = Vector3.new(target.X - hrp.Position.X, 0, target.Z - hrp.Position.Z)
-			local step = math.min(delta.Magnitude, speed * dt)
-			local nextPos = hrp.Position + delta.Unit * step
-			nextPos = Vector3.new(nextPos.X, groundedY(nextPos.X, nextPos.Z, nextPos.Y), nextPos.Z)
-			local look = delta.Magnitude > 0.05 and CFrame.lookAt(nextPos, nextPos + delta) or CFrame.new(nextPos)
-			anchor(hrp, look)
+		hrp = getHRP()
+		if not hrp then return false end
+		if (hrp.Position - targetPos).Magnitude <= CFG.arriveDist then
+			return true
 		end
+		-- keep target updated if Y changed
+		moverAlign[1].Position = Vector3.new(targetPos.X, groundedY(targetPos.X, targetPos.Z, targetPos.Y), targetPos.Z)
+		RunService.Heartbeat:Wait()
 	end
 	return false
+end
+
+local function faceTarget(targetPos)
+	local hrp = getHRP()
+	if not hrp or not moverAlign then return end
+	local flat = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
+	local cf = CFrame.lookAt(hrp.Position, flat)
+	-- small CFrame tweak is okay for rotation, not position
+	pcall(function()
+		hrp.CFrame = CFrame.new(hrp.Position) * (cf - cf.Position)
+	end)
+end
+
+local function getLanePoint(x)
+	return Vector3.new(x, getLaneY(), getLaneZ())
 end
 
 local function buildLanePath(fromPos, toPos)
 	local laneZ, laneY = getLaneZ(), getLaneY()
 	local pts = {}
-	if math.abs(fromPos.Z - laneZ) > 4 then
+	if math.abs(fromPos.Z - laneZ) > 5 then
 		table.insert(pts, Vector3.new(fromPos.X, laneY, laneZ))
 	end
-	if math.abs(fromPos.X - toPos.X) > 3 then
+	if math.abs(fromPos.X - toPos.X) > 4 then
 		table.insert(pts, Vector3.new(toPos.X, laneY, laneZ))
 	end
 	table.insert(pts, Vector3.new(toPos.X, laneY, toPos.Z))
@@ -247,17 +289,11 @@ local function buildLanePath(fromPos, toPos)
 end
 
 local function travelAlong(path, speed)
-	for _, p in ipairs(path) do
+	for i, p in ipairs(path) do
 		if not autoFarm then return false end
-		if not moveXZ(p.X, p.Z, speed) then return false end
+		setStatus("Move " .. i .. "/" .. #path)
+		if not moveToPosition(p, speed) then return false end
 	end
-	return true
-end
-
-local function softTeleport(pos)
-	local hrp = getHRP()
-	if not hrp then return false end
-	anchor(hrp, CFrame.new(pos.X, groundedY(pos.X, pos.Z, pos.Y), pos.Z))
 	return true
 end
 
@@ -381,7 +417,7 @@ local function trySteal(egg)
 		firePrompt(findPrompt(egg))
 		refreshCarry()
 		if carrying then return true end
-		task.wait(0.08)
+		task.wait(0.12)
 	end
 	local prompt = findPrompt(egg)
 	if prompt and not carrying then
@@ -410,70 +446,67 @@ local function getBasePos()
 	end
 end
 
-local function returnToBaseFast()
+local function returnToBase(speed)
 	local base = getBasePos()
 	local hrp = getHRP()
 	if not base or not hrp then return false end
-	travelAlong(buildLanePath(hrp.Position, Vector3.new(base.X, base.Y + 3, base.Z)), CFG.escapeSpeed)
-	softTeleport(Vector3.new(base.X, base.Y + 3, base.Z))
-	return true
-end
-
-local function ensureVelGuard()
-	if velConn then return end
-	velConn = RunService.Heartbeat:Connect(function()
-		if not autoFarm then return end
-		local hrp = getHRP()
-		if not hrp then return end
-		local v = hrp.AssemblyLinearVelocity
-		if math.abs(v.Y) > 8 then
-			hrp.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
-		end
-	end)
-	table.insert(connections, velConn)
+	local path = buildLanePath(hrp.Position, Vector3.new(base.X, base.Y + 3, base.Z))
+	return travelAlong(path, speed)
 end
 
 local function farmOnce()
 	softHarden()
 	refreshCarry()
+
 	if carrying then
-		setStatus("Escape")
-		returnToBaseFast()
-		task.wait(0.2)
+		setStatus("Escape base")
+		returnToBase(CFG.escapeSpeed)
+		task.wait(0.3)
 		return
 	end
+
 	local biome = CFG.biomes[CFG.biomeIndex]
 	local center = getBiomeCenter(biome)
 	local hrp = getHRP()
-	if center and hrp and (hrp.Position - center).Magnitude > 90 then
+	if center and hrp and (hrp.Position - center).Magnitude > 100 then
 		setStatus("To " .. biome)
-		travelAlong(buildLanePath(hrp.Position, center), CFG.approachSpeed)
+		local path = buildLanePath(hrp.Position, center)
+		if not travelAlong(path, CFG.approachSpeed) then
+			setStatus("Move abort")
+			return
+		end
 	end
+
 	local egg = nearestEggInBiome()
 	if not egg then
-		setStatus("No eggs: " .. biome)
-		task.wait(0.55)
+		setStatus("No eggs " .. biome)
+		task.wait(0.6)
 		return
 	end
+
 	local pos = eggPos(egg)
 	hrp = getHRP()
 	setStatus("Approach")
-	if not hrp or not pos or not travelAlong(buildLanePath(hrp.Position, pos), CFG.approachSpeed) then
-		setStatus("Path fail")
+	local path = buildLanePath(hrp.Position, pos)
+	if not travelAlong(path, CFG.approachSpeed) then
+		setStatus("Approach abort")
 		return
 	end
+
 	hrp = getHRP()
 	if hrp and pos then
-		anchor(hrp, CFrame.new(pos.X, groundedY(pos.X, pos.Z, pos.Y), pos.Z))
+		faceTarget(pos)
 	end
+
 	setStatus("Grab")
 	if not trySteal(egg) then
 		setStatus("Miss")
-		task.wait(0.25)
+		task.wait(0.3)
 		return
 	end
-	setStatus("Escape")
-	returnToBaseFast()
+
+	setStatus("Return")
+	returnToBase(CFG.escapeSpeed)
 	carrying = false
 	setStatus("OK")
 end
@@ -481,7 +514,7 @@ end
 local function startFarmLoop()
 	if farmBusy then return end
 	farmBusy = true
-	ensureVelGuard()
+	setupMover()
 	task.spawn(function()
 		while autoFarm do
 			local ok, err = pcall(farmOnce)
@@ -489,12 +522,14 @@ local function startFarmLoop()
 				setStatus("Err " .. tostring(err))
 				task.wait(0.5)
 			end
-			task.wait(0.12)
+			task.wait(0.15)
 		end
+		clearMover()
 		farmBusy = false
 	end)
 end
 
+-- ESP
 local function resolveHiddenParent()
 	if typeof(gethui) == "function" then
 		local ok, h = pcall(gethui)
@@ -595,13 +630,14 @@ function Api.setConfig(t)
 	if typeof(t) ~= "table" then return end
 	if t.biomeIndex then CFG.biomeIndex = t.biomeIndex end
 	if t.biomes then CFG.biomes = t.biomes end
-	if t.approachSpeed then CFG.approachSpeed = t.approachSpeed end
-	if t.escapeSpeed then CFG.escapeSpeed = t.escapeSpeed end
+	if t.approachSpeed then CFG.approachSpeed = math.clamp(t.approachSpeed, 40, 200) end
+	if t.escapeSpeed then CFG.escapeSpeed = math.clamp(t.escapeSpeed, 80, 350) end
 	if typeof(t.status) == "function" then CFG.status = t.status end
 end
 
 function Api.startFarm()
 	bindGame()
+	setupMover()
 	setStatus(("Bound E=%s P=%s Eggs=%s"):format(
 		EggState and "Y" or "N",
 		PlotState and "Y" or "N",
@@ -613,6 +649,7 @@ end
 
 function Api.stopFarm()
 	autoFarm = false
+	clearMover()
 	setStatus("Auto off")
 end
 
@@ -632,6 +669,7 @@ end
 function Api.destroy()
 	autoFarm = false
 	espOn = false
+	clearMover()
 	clearEsp()
 	for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
 	connections = {}
