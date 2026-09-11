@@ -1,6 +1,7 @@
 --[[
-  Steal An Egg — Core v7 (physics-based movement, no CFrame teleport spam)
-  Loaded by Panel via HttpGet.
+  Steal An Egg — Core v8
+  Fixes: (1) final approach too far → egg not stolen, (2) return path through danger → death,
+         (3) egg not banking → wait on base, (4) alignposition timeout/abort.
 ]]
 
 local Players = game:GetService("Players")
@@ -16,12 +17,15 @@ local CFG = {
 		"Forest", "Lake", "Desert", "Jungle", "Snow", "Volcano",
 		"Abyss Ocean", "Prehistoric", "Cosmic", "Cherry Blossom", "Titan Temple",
 	},
-	approachSpeed = 75,    -- lowered: smooth legit speed
-	escapeSpeed = 180,     -- lowered: avoids teleport rubberband
-	arriveDist = 4,
-	stealTimeout = 4,
-	stealHold = 0.9,
-	stepTimeout = 20,
+	approachSpeed = 60,
+	finalApproachSpeed = 22,
+	escapeSpeed = 130,
+	arriveDist = 3.5,
+	finalArriveDist = 1.6,
+	stealTimeout = 6,
+	stealHold = 1.2,
+	stepTimeout = 30,
+	baseWait = 2.5,
 	status = function() end,
 }
 
@@ -33,7 +37,7 @@ local Bound = false
 local autoFarm, espOn, carrying, farmBusy = false, false, false, false
 local connections, espMap = {}, {}
 local espFolder, velConn, espConn, carryConn
-local moverAlign, moverAtt
+local moverAlign, moverAtt, moverRot
 
 local function setStatus(t)
 	CFG.status(t)
@@ -133,12 +137,37 @@ local function getHum()
 	return c and c:FindFirstChildOfClass("Humanoid")
 end
 
+local function antiDeath()
+	local hum = getHum()
+	if not hum then return end
+	if hum.PlatformStand or hum.Sit then
+		hum.PlatformStand = false
+		hum.Sit = false
+	end
+	if hum.Health > 0 and hum.Health < hum.MaxHealth * 0.5 then
+		-- cannot heal without game remote; at least unragdoll
+	end
+	if hum:GetState() == Enum.HumanoidStateType.Dead or hum.Health <= 0 then
+		-- wait respawn
+	end
+end
+
 local function softHarden()
 	local char = getChar()
 	if not char then return end
 	for _, d in ipairs(char:GetChildren()) do
 		if d:IsA("LocalScript") and string.find(d.Name, "Push", 1, true) then
 			pcall(function() d.Disabled = true end)
+		end
+	end
+	for _, folderName in ipairs({ "Animate", "Scripts", "Client" }) do
+		local f = char:FindFirstChild(folderName)
+		if f then
+			for _, d in ipairs(f:GetDescendants()) do
+				if d:IsA("LocalScript") and string.find(d.Name, "Push", 1, true) then
+					pcall(function() d.Disabled = true end)
+				end
+			end
 		end
 	end
 end
@@ -196,16 +225,15 @@ end
 
 local function clearMover()
 	if moverAlign then pcall(function() moverAlign:Destroy() end) end
+	if moverRot then pcall(function() moverRot:Destroy() end) end
 	if moverAtt then pcall(function() moverAtt:Destroy() end) end
-	moverAlign, moverAtt = nil, nil
+	moverAlign, moverRot, moverAtt = nil, nil, nil
 end
 
 local function setupMover()
 	clearMover()
 	local hrp = getHRP()
 	if not hrp then return false end
-	local char = getChar()
-	if not char then return false end
 
 	local att = Instance.new("Attachment")
 	att.Name = "SAE" .. tostring(math.random(10000, 99999))
@@ -218,25 +246,26 @@ local function setupMover()
 	align.RigidityEnabled = false
 	align.ReactionForceEnabled = false
 	align.ApplyAtCenterOfMass = false
-	align.MaxForce = 1e7
+	align.MaxForce = 5e6
 	align.MaxVelocity = CFG.approachSpeed
-	align.Responsiveness = 25
+	align.Responsiveness = 18
 	align.Parent = hrp
 
-	local alignRot = Instance.new("AlignOrientation")
-	alignRot.Mode = Enum.OrientationAlignmentMode.OneAttachment
-	alignRot.Attachment0 = att
-	alignRot.RigidityEnabled = false
-	alignRot.MaxTorque = 5e6
-	alignRot.Responsiveness = 15
-	alignRot.Parent = hrp
+	local rot = Instance.new("AlignOrientation")
+	rot.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	rot.Attachment0 = att
+	rot.RigidityEnabled = false
+	rot.MaxTorque = 3e6
+	rot.Responsiveness = 12
+	rot.Parent = hrp
 
 	moverAtt = att
-	moverAlign = { align, alignRot }
+	moverAlign = align
+	moverRot = rot
 	return true
 end
 
-local function moveToPosition(targetPos, speed, timeout)
+local function moveToPosition(targetPos, speed, timeout, arriveThreshold)
 	local deadline = tick() + (timeout or CFG.stepTimeout)
 	if not moverAlign or not moverAtt then
 		setupMover()
@@ -244,17 +273,38 @@ local function moveToPosition(targetPos, speed, timeout)
 	local hrp = getHRP()
 	if not hrp or not moverAlign then return false end
 
-	moverAlign[1].MaxVelocity = speed
-	moverAlign[1].Position = targetPos
+	moverAlign.MaxVelocity = speed
+	moverAlign.Position = targetPos
+
+	local stuckTick = tick()
+	local lastPos = hrp.Position
+	local threshold = arriveThreshold or CFG.arriveDist
 
 	while tick() < deadline and autoFarm do
 		hrp = getHRP()
 		if not hrp then return false end
-		if (hrp.Position - targetPos).Magnitude <= CFG.arriveDist then
+		antiDeath()
+
+		local dist = (hrp.Position - targetPos).Magnitude
+		if dist <= threshold then
 			return true
 		end
-		-- keep target updated if Y changed
-		moverAlign[1].Position = Vector3.new(targetPos.X, groundedY(targetPos.X, targetPos.Z, targetPos.Y), targetPos.Z)
+
+		-- update Y if ground changed
+		moverAlign.Position = Vector3.new(targetPos.X, groundedY(targetPos.X, targetPos.Z, targetPos.Y), targetPos.Z)
+
+		-- stuck detection: if no progress in 2.5s, small CFrame nudge
+		if (hrp.Position - lastPos).Magnitude > 1 then
+			stuckTick = tick()
+			lastPos = hrp.Position
+		elseif tick() - stuckTick > 2.5 then
+			pcall(function()
+				hrp.CFrame = CFrame.new(hrp.Position + (targetPos - hrp.Position).Unit * 8)
+			end)
+			stuckTick = tick()
+			lastPos = hrp.Position
+		end
+
 		RunService.Heartbeat:Wait()
 	end
 	return false
@@ -262,10 +312,9 @@ end
 
 local function faceTarget(targetPos)
 	local hrp = getHRP()
-	if not hrp or not moverAlign then return end
+	if not hrp then return end
 	local flat = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
 	local cf = CFrame.lookAt(hrp.Position, flat)
-	-- small CFrame tweak is okay for rotation, not position
 	pcall(function()
 		hrp.CFrame = CFrame.new(hrp.Position) * (cf - cf.Position)
 	end)
@@ -278,21 +327,28 @@ end
 local function buildLanePath(fromPos, toPos)
 	local laneZ, laneY = getLaneZ(), getLaneY()
 	local pts = {}
-	if math.abs(fromPos.Z - laneZ) > 5 then
+	-- first get to lane center line
+	if math.abs(fromPos.Z - laneZ) > 6 then
 		table.insert(pts, Vector3.new(fromPos.X, laneY, laneZ))
 	end
+	-- then move along lane to target X
 	if math.abs(fromPos.X - toPos.X) > 4 then
 		table.insert(pts, Vector3.new(toPos.X, laneY, laneZ))
 	end
+	-- finally approach target Z (nest depth)
 	table.insert(pts, Vector3.new(toPos.X, laneY, toPos.Z))
 	return pts
 end
 
-local function travelAlong(path, speed)
+local function travelAlong(path, speed, finalSpeed)
 	for i, p in ipairs(path) do
 		if not autoFarm then return false end
+		local isLast = i == #path
+		local spd = isLast and (finalSpeed or speed) or speed
 		setStatus("Move " .. i .. "/" .. #path)
-		if not moveToPosition(p, speed) then return false end
+		if not moveToPosition(p, spd, CFG.stepTimeout, isLast and CFG.finalArriveDist or CFG.arriveDist) then
+			return false
+		end
 	end
 	return true
 end
@@ -353,9 +409,9 @@ local function eggInSelectedBiome(egg, record)
 	if bounds and pos then
 		local lp = bounds.CFrame:PointToObjectSpace(pos)
 		local half = bounds.Size * 0.5
-		return math.abs(lp.X) <= half.X + 10
-			and math.abs(lp.Y) <= half.Y + 50
-			and math.abs(lp.Z) <= half.Z + 10
+		return math.abs(lp.X) <= half.X + 12
+			and math.abs(lp.Y) <= half.Y + 60
+			and math.abs(lp.Z) <= half.Z + 12
 	end
 	return CFG.biomeIndex == 1 and record == nil
 end
@@ -411,14 +467,27 @@ local function trySteal(egg)
 	if rec and IsFirstUid and IsFirstUid(uid) and BuildSlotKey then
 		pcall(function() slotKey = BuildSlotKey(rec.AreaId, rec.NestId) end)
 	end
+
+	-- stand still right next to egg so server sees proximity
+	local pos = eggPos(egg)
+	if pos then
+		moveToPosition(Vector3.new(pos.X, pos.Y, pos.Z), CFG.finalApproachSpeed, 3, CFG.finalArriveDist)
+		faceTarget(pos)
+		task.wait(0.25)
+	end
+
 	local deadline = tick() + CFG.stealTimeout
 	while tick() < deadline and autoFarm and not carrying do
-		if CarryFn then pcall(function() CarryFn(uid, slotKey) end) end
+		if CarryFn then
+			local ok, res = pcall(function() return CarryFn(uid, slotKey) end)
+			if ok and res == true then carrying = true end
+		end
 		firePrompt(findPrompt(egg))
 		refreshCarry()
 		if carrying then return true end
 		task.wait(0.12)
 	end
+
 	local prompt = findPrompt(egg)
 	if prompt and not carrying then
 		local hold = prompt.HoldDuration
@@ -446,29 +515,45 @@ local function getBasePos()
 	end
 end
 
+local function isInPlot()
+	if not InPlot then return false end
+	local hrp = getHRP()
+	if not hrp then return false end
+	local ok, inside = pcall(function() return InPlot(hrp.Position) end)
+	return ok and inside == true
+end
+
 local function returnToBase(speed)
 	local base = getBasePos()
 	local hrp = getHRP()
 	if not base or not hrp then return false end
-	local path = buildLanePath(hrp.Position, Vector3.new(base.X, base.Y + 3, base.Z))
-	return travelAlong(path, speed)
+	local path = buildLanePath(hrp.Position, Vector3.new(base.X, base.Y + 4, base.Z))
+	return travelAlong(path, speed, speed)
 end
 
 local function farmOnce()
 	softHarden()
+	antiDeath()
 	refreshCarry()
 
 	if carrying then
 		setStatus("Escape base")
 		returnToBase(CFG.escapeSpeed)
-		task.wait(0.3)
+		local waitUntil = tick() + CFG.baseWait
+		while tick() < waitUntil and autoFarm do
+			antiDeath()
+			if not carrying or isInPlot() then break end
+			RunService.Heartbeat:Wait()
+		end
+		carrying = false
+		task.wait(0.2)
 		return
 	end
 
 	local biome = CFG.biomes[CFG.biomeIndex]
 	local center = getBiomeCenter(biome)
 	local hrp = getHRP()
-	if center and hrp and (hrp.Position - center).Magnitude > 100 then
+	if center and hrp and (hrp.Position - center).Magnitude > 120 then
 		setStatus("To " .. biome)
 		local path = buildLanePath(hrp.Position, center)
 		if not travelAlong(path, CFG.approachSpeed) then
@@ -488,14 +573,9 @@ local function farmOnce()
 	hrp = getHRP()
 	setStatus("Approach")
 	local path = buildLanePath(hrp.Position, pos)
-	if not travelAlong(path, CFG.approachSpeed) then
+	if not travelAlong(path, CFG.approachSpeed, CFG.finalApproachSpeed) then
 		setStatus("Approach abort")
 		return
-	end
-
-	hrp = getHRP()
-	if hrp and pos then
-		faceTarget(pos)
 	end
 
 	setStatus("Grab")
@@ -507,6 +587,17 @@ local function farmOnce()
 
 	setStatus("Return")
 	returnToBase(CFG.escapeSpeed)
+
+	-- wait on base until egg is banked / plot accepts it
+	setStatus("Bank")
+	local bankDeadline = tick() + CFG.baseWait + 3
+	while tick() < bankDeadline and autoFarm do
+		antiDeath()
+		refreshCarry()
+		if isInPlot() and not carrying then break end
+		if not carrying then break end
+		RunService.Heartbeat:Wait()
+	end
 	carrying = false
 	setStatus("OK")
 end
@@ -630,8 +721,8 @@ function Api.setConfig(t)
 	if typeof(t) ~= "table" then return end
 	if t.biomeIndex then CFG.biomeIndex = t.biomeIndex end
 	if t.biomes then CFG.biomes = t.biomes end
-	if t.approachSpeed then CFG.approachSpeed = math.clamp(t.approachSpeed, 40, 200) end
-	if t.escapeSpeed then CFG.escapeSpeed = math.clamp(t.escapeSpeed, 80, 350) end
+	if t.approachSpeed then CFG.approachSpeed = math.clamp(t.approachSpeed, 30, 150) end
+	if t.escapeSpeed then CFG.escapeSpeed = math.clamp(t.escapeSpeed, 60, 250) end
 	if typeof(t.status) == "function" then CFG.status = t.status end
 end
 
