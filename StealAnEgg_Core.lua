@@ -1,9 +1,7 @@
 --[[
-  Steal An Egg — Core v14
+  Steal An Egg — Core v15
   Movement = Boblo stealMoveTo (grounded).
-  v13: reclaim dropped eggs.
-  v14: anti-kb via RigSync disconnect (Lutosys); recover mid-path after ragdoll;
-       resume last egg without biome restart; never clear carrying blindly.
+  v14: anti-kb + resume. v15: instant escape the frame carry succeeds.
 ]]
 
 local Players = game:GetService("Players")
@@ -22,11 +20,11 @@ local CFG = {
 	approachSpeed = 220, -- Boblo default steal speed ~300; start a bit safer
 	escapeSpeed = 300,
 	arriveDist = 1.35,
-	grabDelay = 0.55,
+	grabDelay = 0.35, -- only while NOT carrying yet; escape the frame carry succeeds
 	moveTimeout = 14,
 	baseWait = 2.2,
 	reclaimRadius = 220,
-	moveRetries = 3, -- retry waypoint after knock instead of abort→biome start
+	moveRetries = 3,
 	status = function() end,
 }
 
@@ -39,7 +37,8 @@ local autoFarm, espOn, carrying, farmBusy = false, false, false, false
 local connections, espMap = {}, {}
 local espFolder, espConn, carryConn
 local lastEggUid = nil
-local lastEggPos = nil -- Vector3 resume target when knocked mid-approach
+local lastEggPos = nil
+local lastStealAt = 0 -- trust carry for a moment (attribute lag)
 local rigSyncPatched = false
 
 local function setStatus(t)
@@ -530,9 +529,15 @@ local function findPrompt(egg)
 end
 
 local function refreshCarry()
-	carrying = false
+	-- Attribute/tool lag after steal — keep carrying true briefly
+	if carrying and lastStealAt > 0 and (tick() - lastStealAt) < 1.25 then
+		return true
+	end
 	local char = getChar()
-	if not char then return false end
+	if not char then
+		carrying = false
+		return false
+	end
 	if LP:GetAttribute("IsCarryingEgg") == true or char:GetAttribute("IsCarryingEgg") == true then
 		carrying = true
 		return true
@@ -546,6 +551,7 @@ local function refreshCarry()
 			end
 		end
 	end
+	carrying = false
 	return false
 end
 
@@ -560,12 +566,20 @@ local function tryCarryEgg(egg)
 	local ok, res = pcall(function() return CarryFn(uid, slotKey) end)
 	if ok and res == true then
 		carrying = true
+		lastStealAt = tick()
 		return true
 	end
-	return refreshCarry()
+	-- don't call full refresh here (wipes flag); light check only
+	local char = getChar()
+	if char and (LP:GetAttribute("IsCarryingEgg") == true or char:GetAttribute("IsCarryingEgg") == true) then
+		carrying = true
+		lastStealAt = tick()
+		return true
+	end
+	return false
 end
 
--- Boblo stealEgg grab: plant on grounded Y, spam Carry for GrabDelay
+-- Grab → the INSTANT carry succeeds, return (escape starts next line, no linger)
 local function trySteal(egg)
 	local pos = eggPos(egg)
 	local root = getHRP()
@@ -576,40 +590,33 @@ local function trySteal(egg)
 
 	local prompt = findPrompt(egg)
 	local grabStarted = tick()
-	while tick() - grabStarted < CFG.grabDelay and autoFarm and not carrying do
-		tryCarryEgg(egg)
-		if carrying then
-			task.wait(0.08)
-			break
+	while tick() - grabStarted < CFG.grabDelay and autoFarm do
+		if tryCarryEgg(egg) then
+			lastEggUid = egg.Name
+			lastEggPos = pos
+			setStatus("Stolen→GO")
+			return true
 		end
 		if prompt and prompt.Parent then
 			pcall(function() prompt:InputHoldBegin() end)
-			task.wait(0.05)
-			pcall(function() prompt:InputHoldEnd() end)
 			if typeof(fireproximityprompt) == "function" then
 				pcall(fireproximityprompt, prompt)
 			end
+			pcall(function() prompt:InputHoldEnd() end)
 		end
-		refreshCarry()
-		task.wait(0.04)
+		RunService.Heartbeat:Wait()
 	end
 
-	-- short extra window if remote was slow
-	if not carrying then
-		local extra = tick() + 1.2
-		while tick() < extra and autoFarm and not carrying do
-			tryCarryEgg(egg)
-			refreshCarry()
-			task.wait(0.05)
+	-- brief retry only if still empty (max ~0.4s), leave the moment carry pops
+	local extra = tick() + 0.4
+	while tick() < extra and autoFarm do
+		if tryCarryEgg(egg) then
+			lastEggUid = egg.Name
+			lastEggPos = pos
+			setStatus("Stolen→GO")
+			return true
 		end
-	end
-
-	if carrying then
-		setStatus("Stolen")
-		lastEggUid = egg.Name
-		local p = eggPos(egg)
-		if p then lastEggPos = p end
-		return true
+		RunService.Heartbeat:Wait()
 	end
 	return false
 end
@@ -641,6 +648,15 @@ local function returnToBase(speed)
 	local hrp = getHRP()
 	if not base or not hrp then return false end
 	return stealAlong(buildStealPath(hrp.Position, base), speed)
+end
+
+local function peelToLane(speed)
+	local hrp = getHRP()
+	if not hrp then return false end
+	local laneZ = getLaneZ()
+	if math.abs(hrp.Position.Z - laneZ) < 2 then return true end
+	setStatus("Peel")
+	return stealMoveTo(hrp.Position.X, laneZ, speed or CFG.escapeSpeed)
 end
 
 -- Prefer last dropped egg / any Dropped record near player (Boblo State == Dropped)
@@ -699,10 +715,9 @@ local function approachAndSteal(egg, speed)
 	lastEggUid = egg.Name
 	lastEggPos = pos
 	setStatus("Resume egg")
-	recoverStand()
+	if isDowned() then recoverStand() end
 	if not stealAlong(buildStealPath(hrp.Position, pos), speed or CFG.approachSpeed) then
-		recoverStand()
-		-- one more direct try toward egg XZ from current pos
+		if isDowned() then recoverStand() end
 		hrp = getHRP()
 		if hrp and not stealMoveTo(pos.X, pos.Z, speed or CFG.approachSpeed) then
 			return false
@@ -712,18 +727,26 @@ local function approachAndSteal(egg, speed)
 	return trySteal(egg)
 end
 
--- Carry until banked; if knocked, stand up and continue / reclaim
-local function deliverUntilBanked(maxTries)
+-- justStole=true → peel/escape same frame, don't refreshCarry wipe
+local function deliverUntilBanked(maxTries, justStole)
 	maxTries = maxTries or 10
+	if justStole then
+		carrying = true
+		lastStealAt = tick()
+	end
 	for try = 1, maxTries do
 		if not autoFarm then return false end
-		refreshCarry()
+		if not justStole or try > 1 then
+			refreshCarry()
+		end
+		justStole = false
 		if carrying then
 			setStatus(("Escape %d"):format(try))
-			recoverStand()
+			if isDowned() then recoverStand() end
+			peelToLane(CFG.escapeSpeed)
 			local moved = returnToBase(CFG.escapeSpeed)
 			if not moved then
-				recoverStand()
+				if isDowned() then recoverStand() end
 				setStatus("Escape recover")
 			end
 			local bankUntil = tick() + CFG.baseWait + 2
@@ -731,6 +754,7 @@ local function deliverUntilBanked(maxTries)
 				refreshCarry()
 				if isInPlot() and not carrying then
 					lastEggUid, lastEggPos = nil, nil
+					lastStealAt = 0
 					setStatus("OK")
 					return true
 				end
@@ -745,6 +769,7 @@ local function deliverUntilBanked(maxTries)
 			refreshCarry()
 			if carrying and isInPlot() then
 				lastEggUid, lastEggPos = nil, nil
+				lastStealAt = 0
 				setStatus("OK")
 				return true
 			end
@@ -752,7 +777,10 @@ local function deliverUntilBanked(maxTries)
 				local egg = resumeEggTarget()
 				if egg then
 					setStatus("Lost carry → resume")
-					approachAndSteal(egg, CFG.escapeSpeed)
+					if approachAndSteal(egg, CFG.escapeSpeed) then
+						carrying = true
+						lastStealAt = tick()
+					end
 				else
 					setStatus("Carry lost")
 					return false
@@ -763,9 +791,12 @@ local function deliverUntilBanked(maxTries)
 			if not egg then
 				return false
 			end
-			if not approachAndSteal(egg, CFG.approachSpeed) then
-				recoverStand()
-				task.wait(0.15)
+			if approachAndSteal(egg, CFG.approachSpeed) then
+				carrying = true
+				lastStealAt = tick()
+			else
+				if isDowned() then recoverStand() end
+				task.wait(0.1)
 			end
 		end
 	end
@@ -776,24 +807,24 @@ end
 local function farmOnce()
 	patchRigSyncKnockback()
 	swapStealHumanoid()
-	recoverStand()
 	refreshCarry()
 
 	if carrying then
-		deliverUntilBanked(10)
+		deliverUntilBanked(10, true)
 		refreshCarry()
 		return
 	end
+
+	if isDowned() then recoverStand() end
 
 	-- Knock mid-run: resume SAME egg (Slot or Dropped), do NOT reset to biome entry
 	local resume = resumeEggTarget()
 	if resume then
 		setStatus("Resume after hit")
 		if approachAndSteal(resume, CFG.approachSpeed) then
-			deliverUntilBanked(10)
-		else
+			deliverUntilBanked(10, true)
+		elseif isDowned() then
 			recoverStand()
-			-- keep lastEggUid so next loop retries same egg
 		end
 		refreshCarry()
 		return
@@ -805,7 +836,7 @@ local function farmOnce()
 		if hrp and (hrp.Position - lastEggPos).Magnitude < CFG.reclaimRadius then
 			setStatus("Resume pos")
 			stealAlong(buildStealPath(hrp.Position, lastEggPos), CFG.approachSpeed)
-			recoverStand()
+			if isDowned() then recoverStand() end
 		end
 	end
 
@@ -817,7 +848,7 @@ local function farmOnce()
 		setStatus("To " .. biome)
 		if not stealAlong(buildStealPath(hrp.Position, center), CFG.approachSpeed) then
 			setStatus("Move recover")
-			recoverStand()
+			if isDowned() then recoverStand() end
 			return
 		end
 	end
@@ -838,20 +869,20 @@ local function farmOnce()
 	end
 	if not stealAlong(buildStealPath(hrp.Position, lastEggPos), CFG.approachSpeed) then
 		setStatus("Approach recover")
-		recoverStand()
-		-- keep lastEggUid — next farmOnce resumes same egg
+		if isDowned() then recoverStand() end
 		return
 	end
 
 	setStatus("Grab")
 	if not trySteal(egg) then
 		setStatus("Miss")
-		recoverStand()
-		task.wait(0.2)
+		if isDowned() then recoverStand() end
+		task.wait(0.15)
 		return
 	end
 
-	deliverUntilBanked(10)
+	-- instant peel + home — no pause at nest
+	deliverUntilBanked(10, true)
 	refreshCarry()
 end
 
@@ -994,7 +1025,7 @@ function Api.startFarm()
 	bindGame()
 	patchRigSyncKnockback()
 	swapStealHumanoid()
-	setStatus(("v14 Bound E=%s P=%s Eggs=%s KB=%s"):format(
+	setStatus(("v15 Bound E=%s P=%s Eggs=%s KB=%s"):format(
 		EggState and "Y" or "N",
 		PlotState and "Y" or "N",
 		AreaEggs and "Y" or "N",
