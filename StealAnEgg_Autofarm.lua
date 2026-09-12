@@ -1,5 +1,5 @@
 --[[
-  Steal An Egg — Panel v15 (GitHub loader)
+  Steal An Egg — Panel v16 (GitHub loader)
   Load this ONLY. Core is loaded by HttpGet when you press Auto or ESP.
 ]]
 
@@ -47,14 +47,14 @@ local BIOMES = {
 
 local selectedBiome = 1
 local approachSpeed = 220
-local escapeSpeed = 300
+local escapeSpeed = 520
 local statusLbl, biomeLbl, farmBtn, espBtn
 local coreApi
 local coreLoaded = false
 local autoOn = false
 local espOn = false
 -- ?v= busts GitHub raw CDN cache after pushes
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/StealAnEgg_Core.lua?v=15"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/StealAnEgg_Core.lua?v=16"
 
 local function setStatus(t)
 	if statusLbl then statusLbl.Text = tostring(t) end
@@ -117,7 +117,7 @@ Instance.new("UICorner", main).CornerRadius = UDim.new(0, 8)
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -36, 0, 30)
 title.BackgroundTransparency = 1
-title.Text = "  SAE v15"
+title.Text = "  SAE v16"
 title.Font = Enum.Font.GothamBold
 title.TextSize = 15
 title.TextColor3 = Color3.new(1, 1, 1)
@@ -226,7 +226,7 @@ local hint = Instance.new("TextLabel")
 hint.Size = UDim2.new(0.9, 0, 0, 18)
 hint.Position = UDim2.new(0.05, 0, 0, 222)
 hint.BackgroundTransparency = 1
-hint.Text = "Approach | Escape  (ground 220 / 300)"
+hint.Text = "Approach | Escape  (ground 220 / 520)"
 hint.Font = Enum.Font.Gotham
 hint.TextSize = 11
 hint.TextColor3 = Color3.fromRGB(140, 140, 150)
@@ -244,8 +244,7 @@ statusLbl.TextColor3 = Color3.fromRGB(180, 180, 190)
 statusLbl.TextXAlignment = Enum.TextXAlignment.Left
 statusLbl.TextYAlignment = Enum.TextYAlignment.Top
 statusLbl.Parent = main
-statusLbl.Text = ("Safe panel. mount=%s\nv15 instant escape after grab."):format(tostring(howMount))
-
+statusLbl.Text = ("Safe panel. mount=%s\nv16 no ghost-flight + reclaim."):format(tostring(howMount))
 if not okMount then
 	statusLbl.Text = "UI mount FAIL"
 end

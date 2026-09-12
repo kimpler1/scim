@@ -89,6 +89,27 @@ v14 also: recoverStand mid-path, resume lastEggUid (no biome restart),
 retry waypoints, do not force carrying=false.
 
 ----------------------------------------------------------------
+7) OXIDE / FN (hard biomes, ghost-flight fix) — v16
+----------------------------------------------------------------
+Fn (caomod2077) = Luraph obfuscated — dump with SAE_DumpHub if needed:
+  https://raw.githubusercontent.com/caomod2077/Script/refs/heads/main/Fn-stealanegg.lua
+
+Oxide loader (open) → scripts/StealAnEgg.lua (readable):
+  https://raw.githubusercontent.com/xulfo/OxideUiLibary2/main/ScriptLoader.lua
+  https://raw.githubusercontent.com/xulfo/OxideUiLibary2/main/scripts/StealAnEgg.lua
+  Local: ref_scripts\Oxide_StealAnEgg.lua
+
+What we took for v16:
+  * Carry check = PlayerGui.DropHeldEgg.Enabled (not long-lived lastStealAt)
+  * Abort CFrame move when egg lost / dead (stops invisible ghost flight)
+  * RigSync disconnect (same as Lutosys)
+  * Faster elevated escape (escapeSpeed ~520, escapeHeight ~5.5)
+  * On mid-flight loss → Reclaim after hit (Dropped / lastEggUid)
+
+Oxide also has bypassReturnTP (SpawnLocation float) + Anti Guard
+double-pickup — optional later if still failing late biomes.
+
+----------------------------------------------------------------
 5) NEXT TIME WE NEED A FEATURE
 ----------------------------------------------------------------
   1. Open Boblo_StealAnEgg_READABLE.lua and search the feature name

@@ -1,7 +1,8 @@
 --[[
-  Steal An Egg — Core v15
-  Movement = Boblo stealMoveTo (grounded).
-  v14: anti-kb + resume. v15: instant escape the frame carry succeeds.
+  Steal An Egg — Core v16
+  Movement = Boblo stealMoveTo + Oxide carry detect / abort.
+  v15: instant escape. v16: stop ghost-flight when server steals egg / kills you;
+       DropHeldEgg GUI carry check; elevated fast escape; reclaim after mid-flight loss.
 ]]
 
 local Players = game:GetService("Players")
@@ -17,14 +18,16 @@ local CFG = {
 		"Forest", "Lake", "Desert", "Jungle", "Snow", "Volcano",
 		"Abyss Ocean", "Prehistoric", "Cosmic", "Cherry Blossom", "Titan Temple",
 	},
-	approachSpeed = 220, -- Boblo default steal speed ~300; start a bit safer
-	escapeSpeed = 300,
+	approachSpeed = 220,
+	escapeSpeed = 520, -- Oxide glide runs ~750; stay under kick but beat late biomes
 	arriveDist = 1.35,
-	grabDelay = 0.35, -- only while NOT carrying yet; escape the frame carry succeeds
+	grabDelay = 0.35,
 	moveTimeout = 14,
 	baseWait = 2.2,
-	reclaimRadius = 220,
+	reclaimRadius = 280,
 	moveRetries = 3,
+	escapeHeight = 5.5, -- float above lane on escape (Oxide-style clearance)
+	carryGrace = 0.28, -- only brief trust after CarryFn true (was 1.25 → ghost flight)
 	status = function() end,
 }
 
@@ -317,8 +320,9 @@ local function anchor(hrp, cf)
 	hrp.AssemblyAngularVelocity = Vector3.zero
 end
 
--- Boblo stealMoveTo: PlatformStand OFF; recover if knocked mid-path
-local function stealMoveTo(targetX, targetZ, speed)
+-- stealMoveTo: opts.requireCarry aborts ghost-flight; opts.elevated floats escape
+local function stealMoveTo(targetX, targetZ, speed, opts)
+	opts = opts or {}
 	local root = getHRP()
 	if not root then return false end
 	local humanoid = getHum()
@@ -329,14 +333,36 @@ local function stealMoveTo(targetX, targetZ, speed)
 	local arriveDistance = CFG.arriveDist
 	local deadline = tick() + CFG.moveTimeout
 	local spd = speed or CFG.approachSpeed
+	local elev = opts.elevated and (CFG.escapeHeight or 5.5) or 0
 
 	while tick() < deadline and autoFarm do
+		if not isAlive() then
+			carrying = false
+			lastStealAt = 0
+			setStatus('Dead — abort move')
+			return false
+		end
+		if opts.requireCarry and (tick() - (lastStealAt or 0)) > (CFG.carryGrace or 0.28) then
+			if not isActuallyCarrying() then
+				carrying = false
+				lastStealAt = 0
+				setStatus('Egg lost — abort')
+				return false
+			end
+			carrying = true
+		end
 		if isDowned() then
-			setStatus("Recover")
+			if opts.requireCarry and (tick() - (lastStealAt or 0)) > 0.45 and not isActuallyCarrying() then
+				carrying = false
+				lastStealAt = 0
+				setStatus('Hit+no egg — abort')
+				recoverStand()
+				return false
+			end
+			setStatus('Recover')
 			recoverStand()
-			task.wait(0.12)
-			-- extend deadline a bit so knock doesn't burn whole timeout
-			deadline = math.max(deadline, tick() + 4)
+			task.wait(0.08)
+			deadline = math.max(deadline, tick() + 3)
 		end
 		root = getHRP()
 		if not root or not isFiniteVec(root.Position) then
@@ -347,7 +373,7 @@ local function stealMoveTo(targetX, targetZ, speed)
 				humanoid.Sit = false
 				humanoid.PlatformStand = false
 			end
-			local y = groundedY(targetX, targetZ, root.Position.Y)
+			local y = groundedY(targetX, targetZ, root.Position.Y) + elev
 			local target = Vector3.new(targetX, y, targetZ)
 			local delta = target - root.Position
 			if not isFiniteVec(delta) then
@@ -365,36 +391,34 @@ local function stealMoveTo(targetX, targetZ, speed)
 					return true
 				end
 				local dt = RunService.Heartbeat:Wait()
-				if typeof(dt) ~= "number" or dt <= 0 then dt = 1 / 60 end
+				if typeof(dt) ~= 'number' or dt <= 0 then dt = 1 / 60 end
 				root = getHRP()
 				if not root then
 					task.wait(0.05)
+				elseif isDowned() then
+					recoverStand()
 				else
-					if isDowned() then
-						recoverStand()
-					else
-						y = groundedY(targetX, targetZ, root.Position.Y)
-						target = Vector3.new(targetX, y, targetZ)
-						delta = target - root.Position
-						distance = delta.Magnitude
-						if distance <= arriveDistance or distance < 1e-3 then
-							anchor(root, CFrame.new(target))
-							return true
-						end
-						local step = math.min(distance, spd * dt)
-						local nextPosition = root.Position + delta.Unit * step
-						nextPosition = Vector3.new(
-							nextPosition.X,
-							groundedY(nextPosition.X, nextPosition.Z, nextPosition.Y),
-							nextPosition.Z
-						)
-						if isFiniteVec(nextPosition) then
-							local horizontal = Vector3.new(delta.X, 0, delta.Z)
-							local nextCFrame = horizontal.Magnitude > 0.05
-								and CFrame.lookAt(nextPosition, nextPosition + horizontal)
-								or CFrame.new(nextPosition)
-							anchor(root, nextCFrame)
-						end
+					y = groundedY(targetX, targetZ, root.Position.Y) + elev
+					target = Vector3.new(targetX, y, targetZ)
+					delta = target - root.Position
+					distance = delta.Magnitude
+					if distance <= arriveDistance or distance < 1e-3 then
+						anchor(root, CFrame.new(target))
+						return true
+					end
+					local step = math.min(distance, spd * dt)
+					local nextPosition = root.Position + delta.Unit * step
+					nextPosition = Vector3.new(
+						nextPosition.X,
+						groundedY(nextPosition.X, nextPosition.Z, nextPosition.Y) + elev,
+						nextPosition.Z
+					)
+					if isFiniteVec(nextPosition) then
+						local horizontal = Vector3.new(delta.X, 0, delta.Z)
+						local nextCFrame = horizontal.Magnitude > 0.05
+							and CFrame.lookAt(nextPosition, nextPosition + horizontal)
+							or CFrame.new(nextPosition)
+						anchor(root, nextCFrame)
 					end
 				end
 			end
@@ -417,19 +441,29 @@ local function buildStealPath(startPosition, targetPosition)
 	return waypoints
 end
 
-local function stealAlong(waypoints, speed)
+local function stealAlong(waypoints, speed, opts)
+	opts = opts or {}
 	for i, wp in ipairs(waypoints) do
 		if not autoFarm then return false end
 		local ok = false
 		for attempt = 1, (CFG.moveRetries or 3) do
 			if not autoFarm then return false end
-			setStatus(("Move %d/%d%s"):format(i, #waypoints, attempt > 1 and (" r" .. attempt) or ""))
-			if stealMoveTo(wp.X, wp.Z, speed) then
+			if opts.requireCarry and (tick() - (lastStealAt or 0)) > (CFG.carryGrace or 0.28) and not isActuallyCarrying() then
+				carrying = false
+				setStatus('Egg lost — stop path')
+				return false
+			end
+			setStatus(('Move %d/%d%s'):format(i, #waypoints, attempt > 1 and (' r' .. attempt) or ''))
+			if stealMoveTo(wp.X, wp.Z, speed, opts) then
 				ok = true
 				break
 			end
+			if opts.requireCarry and not isActuallyCarrying() then
+				carrying = false
+				return false
+			end
 			recoverStand()
-			task.wait(0.2)
+			task.wait(0.12)
 		end
 		if not ok then
 			return false
@@ -528,31 +562,57 @@ local function findPrompt(egg)
 	end
 end
 
-local function refreshCarry()
-	-- Attribute/tool lag after steal — keep carrying true briefly
-	if carrying and lastStealAt > 0 and (tick() - lastStealAt) < 1.25 then
+-- Oxide: DropHeldEgg GUI is the reliable "still holding" signal
+local function isActuallyCarrying()
+	local pg = LP:FindFirstChildOfClass("PlayerGui")
+	local dropGui = pg and pg:FindFirstChild("DropHeldEgg")
+	if dropGui and dropGui.Enabled == true then
 		return true
 	end
 	local char = getChar()
-	if not char then
-		carrying = false
-		return false
-	end
+	if not char then return false end
 	if LP:GetAttribute("IsCarryingEgg") == true or char:GetAttribute("IsCarryingEgg") == true then
-		carrying = true
 		return true
 	end
-	for _, chd in ipairs(char:GetChildren()) do
-		if chd:IsA("Tool") then
-			local n = chd.Name:lower()
-			if n:find("egg") or n:find("carry") then
-				carrying = true
+	for _, t in ipairs(char:GetChildren()) do
+		if t:IsA("Model") then
+			local n = t.Name:lower()
+			if n:find("egg", 1, true) or t:GetAttribute("Uid") or t:GetAttribute("AssetCategory") then
+				return true
+			end
+		elseif t:IsA("Tool") then
+			local n = t.Name:lower()
+			if n:find("egg", 1, true) or t:GetAttribute("IsEgg") == true or t:GetAttribute("Uid") ~= nil then
 				return true
 			end
 		end
 	end
-	carrying = false
 	return false
+end
+
+local function isAlive()
+	local hum = getHum()
+	local hrp = getHRP()
+	if not hum or not hrp or not hrp.Parent then return false end
+	if hum.Health <= 0 then return false end
+	return true
+end
+
+local function refreshCarry()
+	-- Tiny grace only right after CarryFn (attribute/GUI lag) — NOT long enough for ghost flight
+	if lastStealAt > 0 and (tick() - lastStealAt) < (CFG.carryGrace or 0.28) then
+		if isActuallyCarrying() then
+			carrying = true
+			return true
+		end
+		carrying = true
+		return true
+	end
+	carrying = isActuallyCarrying()
+	if not carrying then
+		lastStealAt = 0
+	end
+	return carrying
 end
 
 local function tryCarryEgg(egg)
@@ -569,9 +629,7 @@ local function tryCarryEgg(egg)
 		lastStealAt = tick()
 		return true
 	end
-	-- don't call full refresh here (wipes flag); light check only
-	local char = getChar()
-	if char and (LP:GetAttribute("IsCarryingEgg") == true or char:GetAttribute("IsCarryingEgg") == true) then
+	if isActuallyCarrying() then
 		carrying = true
 		lastStealAt = tick()
 		return true
@@ -647,7 +705,11 @@ local function returnToBase(speed)
 	local base = getBasePos()
 	local hrp = getHRP()
 	if not base or not hrp then return false end
-	return stealAlong(buildStealPath(hrp.Position, base), speed)
+	-- requireCarry: stop ghost if server took egg; elevated: float above guards
+	return stealAlong(buildStealPath(hrp.Position, base), speed, {
+		requireCarry = true,
+		elevated = true,
+	})
 end
 
 local function peelToLane(speed)
@@ -656,7 +718,10 @@ local function peelToLane(speed)
 	local laneZ = getLaneZ()
 	if math.abs(hrp.Position.Z - laneZ) < 2 then return true end
 	setStatus("Peel")
-	return stealMoveTo(hrp.Position.X, laneZ, speed or CFG.escapeSpeed)
+	return stealMoveTo(hrp.Position.X, laneZ, speed or CFG.escapeSpeed, {
+		requireCarry = true,
+		elevated = true,
+	})
 end
 
 -- Prefer last dropped egg / any Dropped record near player (Boblo State == Dropped)
@@ -738,45 +803,70 @@ local function deliverUntilBanked(maxTries, justStole)
 		if not autoFarm then return false end
 		if not justStole or try > 1 then
 			refreshCarry()
+		else
+			-- still force-true for peel only; next loop uses real DropHeldEgg check
 		end
 		justStole = false
-		if carrying then
+
+		if not isAlive() then
+			carrying = false
+			lastStealAt = 0
+			setStatus("Died — reclaim next")
+			recoverStand()
+			task.wait(0.35)
+			local egg = resumeEggTarget()
+			if egg and approachAndSteal(egg, CFG.approachSpeed) then
+				carrying = true
+				lastStealAt = tick()
+			else
+				return false
+			end
+		elseif carrying or isActuallyCarrying() then
+			carrying = true
 			setStatus(("Escape %d"):format(try))
 			if isDowned() then recoverStand() end
-			peelToLane(CFG.escapeSpeed)
-			local moved = returnToBase(CFG.escapeSpeed)
-			if not moved then
-				if isDowned() then recoverStand() end
-				setStatus("Escape recover")
-			end
-			local bankUntil = tick() + CFG.baseWait + 2
-			while tick() < bankUntil and autoFarm do
-				refreshCarry()
-				if isInPlot() and not carrying then
-					lastEggUid, lastEggPos = nil, nil
-					lastStealAt = 0
-					setStatus("OK")
-					return true
-				end
-				if not carrying then
-					break
-				end
-				if isDowned() then
-					recoverStand()
-				end
-				RunService.Heartbeat:Wait()
-			end
-			refreshCarry()
-			if carrying and isInPlot() then
-				lastEggUid, lastEggPos = nil, nil
+			local peeled = peelToLane(CFG.escapeSpeed)
+			if not peeled and not isActuallyCarrying() then
+				carrying = false
 				lastStealAt = 0
-				setStatus("OK")
-				return true
+				setStatus("Lost on peel → reclaim")
+			else
+				local moved = returnToBase(CFG.escapeSpeed)
+				refreshCarry()
+				if not moved and not carrying then
+					setStatus("Lost mid-flight → reclaim")
+				elseif moved then
+					local bankUntil = tick() + CFG.baseWait + 2
+					while tick() < bankUntil and autoFarm do
+						refreshCarry()
+						if isInPlot() and not carrying then
+							lastEggUid, lastEggPos = nil, nil
+							lastStealAt = 0
+							setStatus("OK")
+							return true
+						end
+						if not carrying then
+							break
+						end
+						if isDowned() then recoverStand() end
+						RunService.Heartbeat:Wait()
+					end
+					refreshCarry()
+					if carrying and isInPlot() then
+						lastEggUid, lastEggPos = nil, nil
+						lastStealAt = 0
+						setStatus("OK")
+						return true
+					end
+				end
 			end
+
+			refreshCarry()
 			if not carrying then
 				local egg = resumeEggTarget()
 				if egg then
-					setStatus("Lost carry → resume")
+					setStatus("Reclaim after hit")
+					recoverStand()
 					if approachAndSteal(egg, CFG.escapeSpeed) then
 						carrying = true
 						lastStealAt = tick()
@@ -791,6 +881,7 @@ local function deliverUntilBanked(maxTries, justStole)
 			if not egg then
 				return false
 			end
+			setStatus("No carry → reclaim")
 			if approachAndSteal(egg, CFG.approachSpeed) then
 				carrying = true
 				lastStealAt = tick()
@@ -1025,7 +1116,7 @@ function Api.startFarm()
 	bindGame()
 	patchRigSyncKnockback()
 	swapStealHumanoid()
-	setStatus(("v15 Bound E=%s P=%s Eggs=%s KB=%s"):format(
+	setStatus(("v16 Bound E=%s P=%s Eggs=%s KB=%s"):format(
 		EggState and "Y" or "N",
 		PlotState and "Y" or "N",
 		AreaEggs and "Y" or "N",
