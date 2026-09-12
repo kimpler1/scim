@@ -1,5 +1,5 @@
 --[[
-  Steal An Egg — Panel v12 (GitHub loader)
+  Steal An Egg — Panel v13 (GitHub loader)
   Load this ONLY. Core is loaded by HttpGet when you press Auto or ESP.
 ]]
 
@@ -54,7 +54,7 @@ local coreLoaded = false
 local autoOn = false
 local espOn = false
 -- ?v= busts GitHub raw CDN cache after pushes
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/StealAnEgg_Core.lua?v=12"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/StealAnEgg_Core.lua?v=13"
 
 local function setStatus(t)
 	if statusLbl then statusLbl.Text = tostring(t) end
@@ -117,7 +117,7 @@ Instance.new("UICorner", main).CornerRadius = UDim.new(0, 8)
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -36, 0, 30)
 title.BackgroundTransparency = 1
-title.Text = "  SAE v12"
+title.Text = "  SAE v13"
 title.Font = Enum.Font.GothamBold
 title.TextSize = 15
 title.TextColor3 = Color3.new(1, 1, 1)
@@ -244,7 +244,7 @@ statusLbl.TextColor3 = Color3.fromRGB(180, 180, 190)
 statusLbl.TextXAlignment = Enum.TextXAlignment.Left
 statusLbl.TextYAlignment = Enum.TextYAlignment.Top
 statusLbl.Parent = main
-statusLbl.Text = ("Safe panel. mount=%s\nv12 Boblo ground move. 220/300."):format(tostring(howMount))
+statusLbl.Text = ("Safe panel. mount=%s\nv13 reclaim drops. Ground 220/300."):format(tostring(howMount))
 
 if not okMount then
 	statusLbl.Text = "UI mount FAIL"

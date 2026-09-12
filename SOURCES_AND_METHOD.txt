@@ -1,0 +1,82 @@
+SOURCES AND METHOD — Steal An Egg autofarm
+==========================================
+Updated: 2026-09-12
+Frozen working baseline: Best Version\ = SAE v12 (do not edit scripts there)
+Live iteration: scim_repo\ + GitHub kimpler1/scim
+
+----------------------------------------------------------------
+1) WHERE THE WORKING MOVEMENT CAME FROM
+----------------------------------------------------------------
+Primary readable source (this is what made v12 work):
+
+  URL:
+  https://raw.githubusercontent.com/bobloscript/scripts/refs/heads/main/opensource_egg
+
+  Local copy:
+  C:\Users\Sonic\Desktop\12312\ref_scripts\Boblo_StealAnEgg_READABLE.lua
+  C:\Users\Sonic\Desktop\12312\ref_scripts\boblo_opensource_egg.lua
+
+Key functions we copied / adapted:
+  H.stealMoveTo      — grounded CFrame steps, PlatformStand = false
+  H.groundedY        — raycast prefer "Ground", clamp to lane Y band
+  H.buildStealPath   — corridor along GameplayZ / SeparationLine lane
+  H.swapStealHumanoid — kill PushBack + humanoid clone vs chicken
+  EggApi.CarryFieldEgg / RF AskFieldEggCarry — actual steal remote
+  record.State == "Dropped" — egg on ground after knockback
+
+Boblo listing page (loader, not the readable file):
+  https://bobloscript.com/script/steal-an-egg-script-auto-steal-eggs-auto-fuse-pets
+
+----------------------------------------------------------------
+2) METHOD: BORROW FIRST, BUILD SECOND
+----------------------------------------------------------------
+Rule we settled on (saves tokens / time):
+
+  A. Search for open / recovered hubs for this place ID.
+  B. Prefer READABLE sources (Boblo opensource_egg). Copy the
+     movement + remote pattern into our thin panel/core.
+  C. If only obfuscated hubs exist (Potato, Axur, Luraph, WeAreDevs):
+     do NOT reverse by hand. Run SAE_DumpHub.lua first, then the hub,
+     then read dumped HttpGet / loadstring files + remotes.log.
+  D. Our panel/GUI stays ours (gethui + protect). Core movement
+     should match a known-working hub, not invent AlignPosition/fly.
+
+Dump helper (local + repo):
+  C:\Users\Sonic\Desktop\12312\SAE_DumpHub.lua
+  https://raw.githubusercontent.com/kimpler1/scim/main/SAE_DumpHub.lua
+
+Obfuscated examples we pulled (not useful until dumped):
+  potatohub67/potatoscripts stealaegg.lua
+  XE3Scripts/Axur-sGamesHub StealAnEgg
+  WhiteX1208 StealAnEggs.luau (Luraph)
+
+Dead / kick-only:
+  joustingmatch/Ouroboros games/stealanegg.lua  → "No Longer Supported"
+
+----------------------------------------------------------------
+3) WHAT FAILED WHEN WE INVENTED MOVEMENT
+----------------------------------------------------------------
+  AlignPosition / hard teleports → rubberband + BAC kicks
+  PlatformStand "fly" like Boblo MANUAL fly toggle → void / map unload
+  (Boblo AUTO-steal does NOT use that fly — it uses stealMoveTo on ground)
+
+----------------------------------------------------------------
+4) VERSION MAP
+----------------------------------------------------------------
+  Best Version\     = frozen v12 (works: steal eggs) — DO NOT EDIT
+  scim_repo v13+    = reclaim dropped eggs after knockback (iterate here)
+  GitHub main       = live loader for testing
+
+Loader template:
+  loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/kimpler1/scim/main/StealAnEgg_Autofarm.lua?v=13"
+  ))()
+
+----------------------------------------------------------------
+5) NEXT TIME WE NEED A FEATURE
+----------------------------------------------------------------
+  1. Open Boblo_StealAnEgg_READABLE.lua and search the feature name
+     (return, place, hatch, drop, sell, treadmill…).
+  2. If missing / outdated → dump a current working hub with SAE_DumpHub.
+  3. Port only that function into StealAnEgg_Core.lua.
+  4. Keep Best Version untouched as the known-good reference.
