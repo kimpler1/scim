@@ -1114,7 +1114,7 @@ function Api.startFarm()
 	bindGame()
 	patchRigSyncKnockback()
 	swapStealHumanoid()
-	setStatus(("v16 Bound E=%s P=%s Eggs=%s KB=%s"):format(
+	setStatus(("v16.1 Bound E=%s P=%s Eggs=%s KB=%s"):format(
 		EggState and "Y" or "N",
 		PlotState and "Y" or "N",
 		AreaEggs and "Y" or "N",
