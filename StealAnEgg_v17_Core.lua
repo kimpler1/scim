@@ -20,7 +20,7 @@ local CFG = {
 	approachSpeed = 250,
 	escapeSpeed = 480,
 	arriveDist = 1.35,
-	grabDelay = 0.3,
+	grabDelay = 1.6, -- Oxide waits ~1.5s spamming carry/prompt
 	moveTimeout = 14,
 	baseWait = 2.2,
 	escapeHeight = 5,
@@ -87,25 +87,52 @@ local function bindGame()
 	IsFirstUid = pick(SlotIdentity, "LooksLikeFirstAreaUid", "IsFirstAreaUid")
 	BuildSlotKey = pick(SlotIdentity, "SlotKey", "BuildSlotKey")
 
-	if not CarryFn then
+	-- Oxide: Packages.Networking["RF/EggWorld/AskFieldEggCarry"]
+	local function findCarryRemote()
+		local packages = ch(ReplicatedStorage, "Packages", 1)
+		local networking = packages and ch(packages, "Networking", 1)
+		if networking then
+			local rem = networking:FindFirstChild("RF/EggWorld/AskFieldEggCarry")
+			if rem then return rem end
+			for _, d in ipairs(networking:GetDescendants()) do
+				if (d:IsA("RemoteFunction") or d:IsA("RemoteEvent"))
+					and tostring(d.Name):find("AskFieldEggCarry", 1, true) then
+					return d
+				end
+			end
+		end
 		for _, folderName in ipairs({ "RF", "Remotes", "Net" }) do
 			local folder = ch(ReplicatedStorage, folderName, 0)
 			if folder then
 				local ew = ch(folder, "Egg" .. "World", 0)
 				local rem = (ew and ch(ew, "Ask" .. "Field" .. "Egg" .. "Carry", 0))
 					or ch(folder, "Ask" .. "Field" .. "Egg" .. "Carry", 0)
-				if rem then
-					CarryFn = function(uid, slotKey)
-						if rem:IsA("RemoteFunction") then
-							return rem:InvokeServer(uid, slotKey)
-						end
-						rem:FireServer(uid, slotKey)
-						return true
-					end
-					break
-				end
+				if rem then return rem end
 			end
 		end
+	end
+
+	local CarryRemote = findCarryRemote()
+	local eggStateCarry = CarryFn
+	-- Fire BOTH module + remote, both arg shapes (Boblo uid,slotKey / Oxide {Uid=...})
+	CarryFn = function(uid, slotKey)
+		local got = false
+		if eggStateCarry then
+			local ok, res = pcall(eggStateCarry, uid, slotKey)
+			if ok and res == true then got = true end
+		end
+		if CarryRemote then
+			pcall(function()
+				if CarryRemote:IsA("RemoteFunction") then
+					CarryRemote:InvokeServer(uid, slotKey)
+					CarryRemote:InvokeServer({ Uid = uid, FirstAreaSlotKey = slotKey })
+				else
+					CarryRemote:FireServer(uid, slotKey)
+					CarryRemote:FireServer({ Uid = uid, FirstAreaSlotKey = slotKey })
+				end
+			end)
+		end
+		return got or isActuallyCarrying()
 	end
 
 	local objects = ch(Workspace, "__" .. "OBJECTS", 3)
@@ -551,9 +578,36 @@ local function nearestEggInBiome()
 end
 
 local function findPrompt(egg)
-	for _, d in ipairs(egg:GetDescendants()) do
-		if d:IsA("ProximityPrompt") then return d end
+	if egg then
+		for _, d in ipairs(egg:GetDescendants()) do
+			if d:IsA("ProximityPrompt") and d.Enabled then
+				return d
+			end
+		end
 	end
+	-- Oxide: CarryAreaEgg near player
+	local hrp = getHRP()
+	if not hrp then return nil end
+	local best, bestDist
+	for _, d in ipairs(Workspace:GetDescendants()) do
+		if d:IsA("ProximityPrompt") and d.Name == "CarryAreaEgg" and d.Enabled then
+			local act = string.lower(tostring(d.ActionText or ""))
+			if act:find("skip", 1, true) or act:find("robux", 1, true) then
+				-- skip
+			else
+				local p = d.Parent
+				if p and p:IsA("Attachment") then p = p.Parent end
+				local part = p and (p:IsA("BasePart") and p or p:FindFirstChildWhichIsA("BasePart"))
+				if part then
+					local dist = (part.Position - hrp.Position).Magnitude
+					if dist < 16 and (not bestDist or dist < bestDist) then
+						best, bestDist = d, dist
+					end
+				end
+			end
+		end
+	end
+	return best
 end
 
 local function refreshCarry()
@@ -571,19 +625,18 @@ local function refreshCarry()
 end
 
 local function tryCarryEgg(egg)
-	if not egg or not CarryFn then return false end
+	if not egg then return false end
+	if not CarryFn then
+		return isActuallyCarrying()
+	end
 	local uid = egg.Name
 	local slotKey
 	local rec = recordsByUid()[uid]
 	if rec and IsFirstUid and IsFirstUid(uid) and BuildSlotKey then
 		pcall(function() slotKey = BuildSlotKey(rec.AreaId, rec.NestId) end)
 	end
-	local ok, res = pcall(function() return CarryFn(uid, slotKey) end)
-	if ok and res == true then
-		carrying = true
-		lastStealAt = tick()
-		return true
-	end
+	pcall(function() CarryFn(uid, slotKey) end)
+	task.wait()
 	if isActuallyCarrying() then
 		carrying = true
 		lastStealAt = tick()
@@ -592,7 +645,18 @@ local function tryCarryEgg(egg)
 	return false
 end
 
--- Grab: first successful tryCarryEgg -> return IMMEDIATELY (no linger)
+local function fireStealPrompt(prompt)
+	if not (prompt and prompt.Parent) then return end
+	pcall(function() prompt.HoldDuration = 0 end)
+	pcall(function() prompt:InputHoldBegin() end)
+	if typeof(fireproximityprompt) == "function" then
+		pcall(fireproximityprompt, prompt)
+		pcall(fireproximityprompt, prompt, 0)
+	end
+	pcall(function() prompt:InputHoldEnd() end)
+end
+
+-- Grab: plant on egg, spam Carry + CarryAreaEgg prompt (Oxide-style)
 local function trySteal(egg)
 	local pos = eggPos(egg)
 	local root = getHRP()
@@ -600,7 +664,13 @@ local function trySteal(egg)
 
 	local targetY = groundedY(pos.X, pos.Z, pos.Y)
 	anchor(root, CFrame.new(pos.X, targetY, pos.Z))
+	task.wait(0.12)
+	root = getHRP()
+	if root then
+		anchor(root, CFrame.new(pos.X, targetY, pos.Z))
+	end
 
+	setStatus("Grab spam")
 	local prompt = findPrompt(egg)
 	local grabStarted = tick()
 	while tick() - grabStarted < CFG.grabDelay and autoFarm do
@@ -611,39 +681,29 @@ local function trySteal(egg)
 			setStatus("Stolen->GO")
 			return true
 		end
-		if prompt and prompt.Parent then
-			pcall(function() prompt:InputHoldBegin() end)
-			task.wait(0.05)
-			pcall(function() prompt:InputHoldEnd() end)
-			if typeof(fireproximityprompt) == "function" then
-				pcall(fireproximityprompt, prompt)
-			end
+		prompt = prompt or findPrompt(egg)
+		fireStealPrompt(prompt)
+		if isActuallyCarrying() then
+			carrying = true
+			lastEggUid = egg.Name
+			lastEggPos = pos
+			lastStealAt = tick()
+			setStatus("Stolen->GO")
+			return true
 		end
-		task.wait(0.04)
+		RunService.Heartbeat:Wait()
 	end
 
-	-- Extra window only if still not carrying (max 0.35s)
-	if not isActuallyCarrying() then
-		local extra = tick() + 0.35
-		while tick() < extra and autoFarm do
-			if tryCarryEgg(egg) then
-				lastEggUid = egg.Name
-				lastEggPos = pos
-				lastStealAt = tick()
-				setStatus("Stolen->GO")
-				return true
-			end
-			task.wait(0.04)
-		end
-	else
+	if isActuallyCarrying() then
+		carrying = true
 		lastEggUid = egg.Name
 		lastEggPos = pos
 		lastStealAt = tick()
-		carrying = true
 		setStatus("Stolen->GO")
 		return true
 	end
 
+	setStatus("Miss (no carry)")
 	return false
 end
 
@@ -980,7 +1040,7 @@ function Api.startFarm()
 	bindGame()
 	patchRigSyncKnockback()
 	swapStealHumanoid()
-	setStatus(("v17 Bound E=%s P=%s Eggs=%s KB=%s"):format(
+	setStatus(("v17b Bound E=%s P=%s Eggs=%s KB=%s"):format(
 		EggState and "Y" or "N",
 		PlotState and "Y" or "N",
 		AreaEggs and "Y" or "N",

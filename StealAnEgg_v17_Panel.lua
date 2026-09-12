@@ -54,7 +54,7 @@ local coreLoaded = false
 local autoOn = false
 local espOn = false
 -- Unique filename + cb= busts GitHub raw CDN cache
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/StealAnEgg_v17_Core.lua?cb=17"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/StealAnEgg_v17b_Core.lua?cb=17b"
 
 local function setStatus(t)
 	if statusLbl then statusLbl.Text = tostring(t) end
@@ -117,7 +117,7 @@ Instance.new("UICorner", main).CornerRadius = UDim.new(0, 8)
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -36, 0, 30)
 title.BackgroundTransparency = 1
-title.Text = "  SAE v17"
+title.Text = "  SAE v17b"
 title.Font = Enum.Font.GothamBold
 title.TextSize = 15
 title.TextColor3 = Color3.new(1, 1, 1)
@@ -226,7 +226,7 @@ local hint = Instance.new("TextLabel")
 hint.Size = UDim2.new(0.9, 0, 0, 18)
 hint.Position = UDim2.new(0.05, 0, 0, 222)
 hint.BackgroundTransparency = 1
-hint.Text = "Approach | Escape  (v17 Best+fast 250/480)"
+hint.Text = "Approach | Escape  (v17b grab-fix 250/480)"
 hint.Font = Enum.Font.Gotham
 hint.TextSize = 11
 hint.TextColor3 = Color3.fromRGB(140, 140, 150)
@@ -244,7 +244,7 @@ statusLbl.TextColor3 = Color3.fromRGB(180, 180, 190)
 statusLbl.TextXAlignment = Enum.TextXAlignment.Left
 statusLbl.TextYAlignment = Enum.TextYAlignment.Top
 statusLbl.Parent = main
-statusLbl.Text = ("v17 from Best Version. Fast grab+escape.\nmount=%s"):format(tostring(howMount))
+statusLbl.Text = ("v17b Oxide-style carry spam.\nmount=%s"):format(tostring(howMount))
 
 if not okMount then
 	statusLbl.Text = "UI mount FAIL"
