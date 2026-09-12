@@ -1,5 +1,5 @@
 --[[
-  Steal An Egg — Panel v11 (GitHub loader)
+  Steal An Egg — Panel v12 (GitHub loader)
   Load this ONLY. Core is loaded by HttpGet when you press Auto or ESP.
 ]]
 
@@ -46,15 +46,15 @@ local BIOMES = {
 }
 
 local selectedBiome = 1
-local approachSpeed = 70
-local escapeSpeed = 110
+local approachSpeed = 220
+local escapeSpeed = 300
 local statusLbl, biomeLbl, farmBtn, espBtn
 local coreApi
 local coreLoaded = false
 local autoOn = false
 local espOn = false
 -- ?v= busts GitHub raw CDN cache after pushes
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/StealAnEgg_Core.lua?v=11"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/StealAnEgg_Core.lua?v=12"
 
 local function setStatus(t)
 	if statusLbl then statusLbl.Text = tostring(t) end
@@ -117,7 +117,7 @@ Instance.new("UICorner", main).CornerRadius = UDim.new(0, 8)
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -36, 0, 30)
 title.BackgroundTransparency = 1
-title.Text = "  SAE v11"
+title.Text = "  SAE v12"
 title.Font = Enum.Font.GothamBold
 title.TextSize = 15
 title.TextColor3 = Color3.new(1, 1, 1)
@@ -226,7 +226,7 @@ local hint = Instance.new("TextLabel")
 hint.Size = UDim2.new(0.9, 0, 0, 18)
 hint.Position = UDim2.new(0.05, 0, 0, 222)
 hint.BackgroundTransparency = 1
-hint.Text = "Approach | Escape  (fly 70 / 110)"
+hint.Text = "Approach | Escape  (ground 220 / 300)"
 hint.Font = Enum.Font.Gotham
 hint.TextSize = 11
 hint.TextColor3 = Color3.fromRGB(140, 140, 150)
@@ -244,7 +244,7 @@ statusLbl.TextColor3 = Color3.fromRGB(180, 180, 190)
 statusLbl.TextXAlignment = Enum.TextXAlignment.Left
 statusLbl.TextYAlignment = Enum.TextYAlignment.Top
 statusLbl.Parent = main
-statusLbl.Text = ("Safe panel. mount=%s\nv11 no-void fly. Defaults 70/110."):format(tostring(howMount))
+statusLbl.Text = ("Safe panel. mount=%s\nv12 Boblo ground move. 220/300."):format(tostring(howMount))
 
 if not okMount then
 	statusLbl.Text = "UI mount FAIL"
@@ -302,13 +302,13 @@ end)
 
 approachBox.FocusLost:Connect(function()
 	local n = tonumber(approachBox.Text)
-	if n and n >= 40 and n <= 280 then approachSpeed = n else approachBox.Text = tostring(approachSpeed) end
+	if n and n >= 50 and n <= 1000 then approachSpeed = n else approachBox.Text = tostring(approachSpeed) end
 	pushConfig()
 end)
 
 escapeBox.FocusLost:Connect(function()
 	local n = tonumber(escapeBox.Text)
-	if n and n >= 80 and n <= 500 then escapeSpeed = n else escapeBox.Text = tostring(escapeSpeed) end
+	if n and n >= 50 and n <= 1000 then escapeSpeed = n else escapeBox.Text = tostring(escapeSpeed) end
 	pushConfig()
 end)
 
