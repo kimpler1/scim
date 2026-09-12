@@ -1,7 +1,10 @@
 --[[
   Glitch Core — Steal An Egg
-  Farm: Quest Version (v18 ideal autofarm). ESP split + Boblo WalkSpeed/Fly.
+  Farm: Quest Version (v18). ESP + Walk/Fly with Oxide-style client AC scrub.
+  VER: 0.4.0-ac
 ]]
+
+local GLITCH_CORE_VER = "0.4.0-ac"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -60,8 +63,8 @@ local espFolder, espConn
 local walkSpeedOn, walkSpeedVal = false, 32
 local flyOn, flySpeed = false, 60
 local moveConn
-local walkHookConn
-local lastWalkHum
+local acInstalled = false
+local acStatus = "off"
 
 local function setStatus(t)
 	CFG.status(t)
@@ -1454,34 +1457,184 @@ local function ensureEspLoop()
 	end
 end
 
+-- Oxide-style client AC: Evidence scrub + WalkSpeed signal kill
+-- (Foxname/Fn is Luraph — same class of bypass lives readable in Oxide)
+local function disableSignalConns(signal)
+	if typeof(getconnections) ~= "function" or not signal then return 0 end
+	local n = 0
+	local ok, list = pcall(getconnections, signal)
+	if not ok or type(list) ~= "table" then return 0 end
+	for _, c in ipairs(list) do
+		pcall(function()
+			if c.Disable then c:Disable() elseif c.Disconnect then c:Disconnect() end
+		end)
+		n = n + 1
+	end
+	return n
+end
+
+local function scrubIntegrityTables()
+	if typeof(getgc) ~= "function" then return false end
+	local hit = false
+	local ok, objs = pcall(getgc, true)
+	if not ok or not objs then return false end
+	for _, o in pairs(objs) do
+		if type(o) == "table" then
+			local isEv = false
+			pcall(function()
+				isEv = (rawget(o, "ValidationLocked") ~= nil and rawget(o, "Evidence") ~= nil)
+					or (rawget(o, "ThreatLevel") ~= nil and rawget(o, "LastObservedSample") ~= nil)
+			end)
+			if isEv then
+				hit = true
+				pcall(function()
+					local ev = rawget(o, "Evidence")
+					if type(ev) == "table" then
+						if (tonumber(ev.Speed) or 0) > 0 then rawset(ev, "Speed", 0) end
+						if (tonumber(ev.Teleport) or 0) > 0 then rawset(ev, "Teleport", 0) end
+						if (tonumber(ev.Flight) or 0) > 0 then rawset(ev, "Flight", 0) end
+					end
+					if rawget(o, "ThreatLevel") ~= "Trusted" then rawset(o, "ThreatLevel", "Trusted") end
+					if rawget(o, "ValidationLocked") == true then rawset(o, "ValidationLocked", false) end
+					if rawget(o, "FirstSuspiciousAt") ~= nil then rawset(o, "FirstSuspiciousAt", nil) end
+					if rawget(o, "KickQueued") == true then rawset(o, "KickQueued", false) end
+					if rawget(o, "TamperScore") ~= nil then rawset(o, "TamperScore", 0) end
+					if rawget(o, "InvalidHeartbeatCount") ~= nil then rawset(o, "InvalidHeartbeatCount", 0) end
+					local los = rawget(o, "LastObservedSample")
+					if los ~= nil then
+						if rawget(o, "LastGameplayTrustedSample") == nil then rawset(o, "LastGameplayTrustedSample", los) end
+						if rawget(o, "LastValidatedSample") == nil then rawset(o, "LastValidatedSample", los) end
+						if rawget(o, "LastValidatedGroundedSample") == nil then rawset(o, "LastValidatedGroundedSample", los) end
+						if rawget(o, "LastConfirmedGroundSample") == nil then rawset(o, "LastConfirmedGroundSample", los) end
+						if rawget(o, "LastGoodSample") == nil then rawset(o, "LastGoodSample", los) end
+					end
+				end)
+			end
+		end
+	end
+	return hit
+end
+
+local function hardenCharacterSignals()
+	local char = getChar()
+	local hum = getHum()
+	local hrp = getHRP()
+	local killed = 0
+	if hum then
+		killed = killed + disableSignalConns(hum:GetPropertyChangedSignal("WalkSpeed"))
+		killed = killed + disableSignalConns(hum:GetPropertyChangedSignal("JumpPower"))
+		killed = killed + disableSignalConns(hum:GetPropertyChangedSignal("JumpHeight"))
+		killed = killed + disableSignalConns(hum:GetPropertyChangedSignal("Health"))
+	end
+	if hrp then
+		killed = killed + disableSignalConns(hrp:GetPropertyChangedSignal("CFrame"))
+		killed = killed + disableSignalConns(hrp:GetPropertyChangedSignal("AssemblyLinearVelocity"))
+	end
+	-- Kill PushBack localscripts (same as steal swap)
+	if char then
+		for _, d in ipairs(char:GetDescendants()) do
+			if d:IsA("LocalScript") then
+				local n = string.lower(d.Name)
+				if n:find("push", 1, true) or n:find("anti", 1, true) or n:find("speed", 1, true) then
+					pcall(function()
+						d.Disabled = true
+						d:Destroy()
+					end)
+				end
+			end
+		end
+	end
+	return killed
+end
+
+local function installClientAc()
+	if acInstalled then
+		hardenCharacterSignals()
+		scrubIntegrityTables()
+		return acStatus
+	end
+	acInstalled = true
+	local parts = {}
+
+	-- Oxide Layer1-ish: freeze detection tables via filtergc if present
+	pcall(function()
+		if typeof(filtergc) == "function" and debug and debug.getupvalues then
+			local ok, fn = pcall(function()
+				return filtergc("function", { Constants = { "gmatch", "GetFullName" } }, true)
+			end)
+			if ok and typeof(fn) == "function" then
+				local setMeta = setrawmetatable or setmetatable
+				local okUv, ups = pcall(debug.getupvalues, fn)
+				if okUv and type(ups) == "table" and setMeta then
+					for _, tbl in pairs(ups) do
+						if typeof(tbl) == "table" then
+							pcall(setMeta, tbl, { __newindex = function() end })
+						end
+					end
+					table.insert(parts, "filtergc")
+				end
+			end
+		end
+	end)
+
+	hardenCharacterSignals()
+	table.insert(parts, "signals")
+
+	-- Continuous Evidence scrub (Oxide) — zeros Speed/Flight/Teleport flags
+	local scrubConn = RunService.Heartbeat:Connect(function()
+		if walkSpeedOn or flyOn then
+			scrubIntegrityTables()
+		end
+	end)
+	table.insert(connections, scrubConn)
+	if scrubIntegrityTables() then
+		table.insert(parts, "evidence")
+	else
+		table.insert(parts, "evidence?")
+	end
+
+	-- Block game from overwriting WalkSpeed while we own it
+	pcall(function()
+		if typeof(hookmetamethod) ~= "function" then return end
+		local old
+		old = hookmetamethod(game, "__newindex", function(self, key, value)
+			if walkSpeedOn and typeof(self) == "Instance" and self:IsA("Humanoid") and key == "WalkSpeed" then
+				if not checkcaller or not checkcaller() then
+					if typeof(value) == "number" and value ~= walkSpeedVal then
+						return old(self, key, walkSpeedVal)
+					end
+				end
+			end
+			return old(self, key, value)
+		end)
+		table.insert(parts, "newindex")
+	end)
+
+	acStatus = table.concat(parts, "+")
+	return acStatus
+end
+
 local function applyWalkSpeed()
 	local hum = getHum()
 	if not hum or not walkSpeedOn then return end
-	if hum.WalkSpeed ~= walkSpeedVal then
-		hum.WalkSpeed = walkSpeedVal
-	end
-	-- Re-hook when humanoid changes (swapStealHumanoid / respawn)
-	if hum ~= lastWalkHum then
-		if walkHookConn then
-			pcall(function() walkHookConn:Disconnect() end)
-			walkHookConn = nil
-		end
-		lastWalkHum = hum
-		walkHookConn = hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-			if walkSpeedOn and hum.Parent and hum.WalkSpeed ~= walkSpeedVal then
-				hum.WalkSpeed = walkSpeedVal
-			end
-		end)
-		table.insert(connections, walkHookConn)
-	end
+	hum.WalkSpeed = walkSpeedVal
 end
 
--- Boblo movement loop: WalkSpeed every frame + CFrame fly (no BodyVelocity / no Anchor)
+-- Boblo CFrame fly + WalkSpeed; AC scrub must be running
 local function ensureMoveLoop()
 	if moveConn then return end
 	moveConn = RunService.RenderStepped:Connect(function(dt)
 		if walkSpeedOn then
 			applyWalkSpeed()
+			local hum = getHum()
+			local hrp = getHRP()
+			-- Extra: if game clamps WS, boost along MoveDirection (still scrubbed)
+			if hum and hrp and hum.MoveDirection.Magnitude > 0.05 then
+				local boost = math.max(0, walkSpeedVal - math.max(hum.WalkSpeed, 16))
+				if boost > 1 then
+					hrp.CFrame = hrp.CFrame + hum.MoveDirection * boost * math.min(dt, 0.05)
+				end
+			end
 		end
 		if not flyOn or autoFarm then return end
 		local root = getHRP()
@@ -1522,14 +1675,12 @@ end
 local function setWalkSpeedEnabled(on)
 	walkSpeedOn = on and true or false
 	if walkSpeedOn then
+		local ac = installClientAc()
 		ensureMoveLoop()
+		hardenCharacterSignals()
 		applyWalkSpeed()
+		setStatus(("WS on %d | AC %s | %s"):format(walkSpeedVal, tostring(ac), GLITCH_CORE_VER))
 	else
-		lastWalkHum = nil
-		if walkHookConn then
-			pcall(function() walkHookConn:Disconnect() end)
-			walkHookConn = nil
-		end
 		local hum = getHum()
 		if hum then
 			pcall(function() hum.WalkSpeed = 16 end)
@@ -1557,15 +1708,22 @@ local function startFly()
 		setStatus("Fly paused (Auto on)")
 		return
 	end
+	local ac = installClientAc()
 	flyOn = true
 	ensureMoveLoop()
+	hardenCharacterSignals()
 	local hum = getHum()
 	if hum then
 		hum.PlatformStand = true
 	end
+	setStatus(("Fly on %d | AC %s | %s"):format(flySpeed, tostring(ac), GLITCH_CORE_VER))
 end
 
 local Api = {}
+
+function Api.getVersion()
+	return GLITCH_CORE_VER
+end
 
 function Api.setConfig(t)
 	if typeof(t) ~= "table" then return end
@@ -1581,7 +1739,8 @@ function Api.startFarm()
 	patchRigSyncKnockback()
 	swapStealHumanoid()
 	if flyOn then stopFly() end
-	setStatus(("Glitch Bound E=%s P=%s Eggs=%s KB=%s"):format(
+	setStatus(("Glitch %s Bound E=%s P=%s Eggs=%s KB=%s"):format(
+		GLITCH_CORE_VER,
 		EggState and "Y" or "N",
 		PlotState and "Y" or "N",
 		AreaEggs and "Y" or "N",
@@ -1646,17 +1805,19 @@ function Api.destroy()
 		pcall(function() c:Disconnect() end)
 	end
 	connections = {}
-	espConn, moveConn, walkHookConn = nil, nil, nil
-	lastWalkHum = nil
+	espConn, moveConn = nil, nil
 end
 
 LP.CharacterAdded:Connect(function()
-	task.wait(0.4)
+	task.wait(0.45)
 	if autoFarm then
 		swapStealHumanoid()
 		patchRigSyncKnockback()
 	end
-	lastWalkHum = nil
+	if walkSpeedOn or flyOn then
+		installClientAc()
+		hardenCharacterSignals()
+	end
 	if walkSpeedOn then
 		applyWalkSpeed()
 	end
@@ -1665,5 +1826,8 @@ LP.CharacterAdded:Connect(function()
 		if hum then hum.PlatformStand = true end
 	end
 end)
+
+-- Install AC early so farm/ESP load doesn't leave BAC hot
+pcall(installClientAc)
 
 return Api

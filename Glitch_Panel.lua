@@ -1,10 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  Core: Glitch_Core.lua (Quest v18 farm + split ESP + walk/fly)
+  VER: 0.4.0-ac  (bump when shipping; remove at release if asked)
 ]]
 
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=g2"
+local GLITCH_UI_VER = "0.4.0-ac"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=g3"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -100,7 +101,8 @@ local function loadCore()
 	end
 	coreApi = api
 	coreLoaded = true
-	setStatus("Core OK")
+	local cv = (coreApi.getVersion and coreApi.getVersion()) or "?"
+	setStatus(("Core OK  UI %s  Core %s"):format(GLITCH_UI_VER, tostring(cv)))
 	return true
 end
 
@@ -199,7 +201,7 @@ sub.Font = Enum.Font.Gotham
 sub.TextSize = 11
 sub.TextColor3 = MUTED
 sub.TextXAlignment = Enum.TextXAlignment.Left
-sub.Text = "glass ui  ·  quest farm"
+sub.Text = ("glass ui  ·  quest farm  ·  v%s"):format(GLITCH_UI_VER)
 sub.Parent = header
 
 local closeBtn = Instance.new("TextButton")
@@ -657,7 +659,7 @@ statusLbl.TextColor3 = MUTED
 statusLbl.TextXAlignment = Enum.TextXAlignment.Left
 statusLbl.TextYAlignment = Enum.TextYAlignment.Top
 statusLbl.TextWrapped = true
-statusLbl.Text = ("Glitch ready.\nmount=%s"):format(tostring(howMount))
+statusLbl.Text = ("Glitch UI v%s\nmount=%s\nload core → version in status"):format(GLITCH_UI_VER, tostring(howMount))
 statusLbl.Parent = statusRow
 
 prevB.MouseButton1Click:Connect(function()
@@ -749,7 +751,7 @@ fh.TextColor3 = MUTED
 fh.TextWrapped = true
 fh.TextXAlignment = Enum.TextXAlignment.Left
 fh.TextYAlignment = Enum.TextYAlignment.Top
-fh.Text = "Fly = Boblo CFrame*dt (no BodyVelocity). Start ~60. Walk Speed toggle must be ON (slider auto-enables)."
+fh.Text = "AC scrub (Oxide Evidence) + Boblo fly. Status shows AC layers. Start fly ~60."
 fh.Parent = flyHint
 
 -- default page
