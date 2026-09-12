@@ -1,6 +1,6 @@
 --[[
   Glitch Core — Steal An Egg
-  Farm: Quest Version (v18 ideal autofarm). ESP split + WalkSpeed + BodyVelocity fly.
+  Farm: Quest Version (v18 ideal autofarm). ESP split + Boblo WalkSpeed/Fly.
 ]]
 
 local Players = game:GetService("Players")
@@ -57,10 +57,11 @@ local connections = {}
 local espFlags = { players = false, eggs = false, beasts = false }
 local espMap = {} -- [key] = { hl, bb, label, kind }
 local espFolder, espConn
-local walkSpeedOn, walkSpeedVal = false, 28
+local walkSpeedOn, walkSpeedVal = false, 32
 local flyOn, flySpeed = false, 60
-local flyState = nil
-local walkConn
+local moveConn
+local walkHookConn
+local lastWalkHum
 
 local function setStatus(t)
 	CFG.status(t)
@@ -1455,22 +1456,80 @@ end
 
 local function applyWalkSpeed()
 	local hum = getHum()
-	if hum and walkSpeedOn then
+	if not hum or not walkSpeedOn then return end
+	if hum.WalkSpeed ~= walkSpeedVal then
 		hum.WalkSpeed = walkSpeedVal
 	end
+	-- Re-hook when humanoid changes (swapStealHumanoid / respawn)
+	if hum ~= lastWalkHum then
+		if walkHookConn then
+			pcall(function() walkHookConn:Disconnect() end)
+			walkHookConn = nil
+		end
+		lastWalkHum = hum
+		walkHookConn = hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+			if walkSpeedOn and hum.Parent and hum.WalkSpeed ~= walkSpeedVal then
+				hum.WalkSpeed = walkSpeedVal
+			end
+		end)
+		table.insert(connections, walkHookConn)
+	end
+end
+
+-- Boblo movement loop: WalkSpeed every frame + CFrame fly (no BodyVelocity / no Anchor)
+local function ensureMoveLoop()
+	if moveConn then return end
+	moveConn = RunService.RenderStepped:Connect(function(dt)
+		if walkSpeedOn then
+			applyWalkSpeed()
+		end
+		if not flyOn or autoFarm then return end
+		local root = getHRP()
+		local humanoid = getHum()
+		local cam = Workspace.CurrentCamera
+		if not (root and humanoid and cam) then return end
+		humanoid.PlatformStand = true
+		local direction = Vector3.zero
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+			direction = direction + cam.CFrame.LookVector
+		end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+			direction = direction - cam.CFrame.LookVector
+		end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+			direction = direction - cam.CFrame.RightVector
+		end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+			direction = direction + cam.CFrame.RightVector
+		end
+		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+			direction = direction + Vector3.new(0, 1, 0)
+		end
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+			or UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+			direction = direction - Vector3.new(0, 1, 0)
+		end
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+		if direction.Magnitude > 0.05 then
+			local step = flySpeed * math.min(dt, 0.05)
+			root.CFrame = root.CFrame + direction.Unit * step
+		end
+	end)
+	table.insert(connections, moveConn)
 end
 
 local function setWalkSpeedEnabled(on)
 	walkSpeedOn = on and true or false
 	if walkSpeedOn then
-		if not walkConn then
-			walkConn = RunService.Stepped:Connect(function()
-				if walkSpeedOn then applyWalkSpeed() end
-			end)
-			table.insert(connections, walkConn)
-		end
+		ensureMoveLoop()
 		applyWalkSpeed()
 	else
+		lastWalkHum = nil
+		if walkHookConn then
+			pcall(function() walkHookConn:Disconnect() end)
+			walkHookConn = nil
+		end
 		local hum = getHum()
 		if hum then
 			pcall(function() hum.WalkSpeed = 16 end)
@@ -1480,79 +1539,30 @@ end
 
 local function stopFly()
 	flyOn = false
-	local f = flyState
-	flyState = nil
-	if f then
-		pcall(function() f.conn:Disconnect() end)
-		pcall(function() if f.bv then f.bv:Destroy() end end)
-		pcall(function() if f.bg then f.bg:Destroy() end end)
-		local hum = getHum()
-		if hum then
-			hum.PlatformStand = false
-			pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
-		end
-		local hrp = getHRP()
-		if hrp then
-			hrp.AssemblyLinearVelocity = Vector3.zero
-		end
+	local hum = getHum()
+	if hum then
+		hum.PlatformStand = false
+		pcall(function()
+			hum:ChangeState(Enum.HumanoidStateType.Running)
+		end)
+	end
+	local hrp = getHRP()
+	if hrp then
+		hrp.AssemblyLinearVelocity = Vector3.zero
 	end
 end
 
--- Real fly (Oxide-style BodyVelocity) — continuous velocity, not TP
 local function startFly()
-	if flyState then return end
-	local hrp = getHRP()
-	local hum = getHum()
-	if not (hrp and hum) then return end
+	if autoFarm then
+		setStatus("Fly paused (Auto on)")
+		return
+	end
 	flyOn = true
-	hum.PlatformStand = true
-
-	local bg = Instance.new("BodyGyro")
-	bg.Name = "GFlyGyro"
-	bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-	bg.P = 9e4
-	bg.CFrame = hrp.CFrame
-	bg.Parent = hrp
-
-	local bv = Instance.new("BodyVelocity")
-	bv.Name = "GFlyVel"
-	bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-	bv.Velocity = Vector3.zero
-	bv.P = 1250
-	bv.Parent = hrp
-
-	local conn = RunService.RenderStepped:Connect(function()
-		if not flyOn then return end
-		hrp = getHRP()
-		hum = getHum()
-		if not (hrp and hum and bv.Parent and bg.Parent) then
-			stopFly()
-			return
-		end
+	ensureMoveLoop()
+	local hum = getHum()
+	if hum then
 		hum.PlatformStand = true
-		local cam = Workspace.CurrentCamera
-		if not cam then return end
-		local look = cam.CFrame.LookVector
-		local right = cam.CFrame.RightVector
-		local dir = Vector3.zero
-		if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + look end
-		if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - look end
-		if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - right end
-		if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + right end
-		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0, 1, 0) end
-		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-			dir = dir - Vector3.new(0, 1, 0)
-		end
-		if dir.Magnitude > 0.05 then
-			bv.Velocity = dir.Unit * flySpeed
-		else
-			bv.Velocity = Vector3.zero
-		end
-		bg.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + look)
-	end)
-
-	flyState = { bv = bv, bg = bg, conn = conn }
-	table.insert(connections, conn)
+	end
 end
 
 local Api = {}
@@ -1570,7 +1580,7 @@ function Api.startFarm()
 	bindGame()
 	patchRigSyncKnockback()
 	swapStealHumanoid()
-	if flyOn then stopFly() end -- farm owns movement
+	if flyOn then stopFly() end
 	setStatus(("Glitch Bound E=%s P=%s Eggs=%s KB=%s"):format(
 		EggState and "Y" or "N",
 		PlotState and "Y" or "N",
@@ -1588,7 +1598,6 @@ function Api.stopFarm()
 	setStatus("Auto off")
 end
 
--- legacy single toggle → players only
 function Api.setEsp(on)
 	espFlags.players = on and true or false
 	ensureEspLoop()
@@ -1611,20 +1620,16 @@ end
 
 function Api.setWalkSpeed(on, speed)
 	if typeof(speed) == "number" then
-		walkSpeedVal = math.clamp(speed, 16, 250)
+		walkSpeedVal = math.clamp(speed, 16, 500)
 	end
 	setWalkSpeedEnabled(on)
 end
 
 function Api.setFly(on, speed)
 	if typeof(speed) == "number" then
-		flySpeed = math.clamp(speed, 10, 250)
+		flySpeed = math.clamp(speed, 10, 400)
 	end
 	if on then
-		if autoFarm then
-			setStatus("Fly paused (Auto on)")
-			return
-		end
 		startFly()
 	else
 		stopFly()
@@ -1641,7 +1646,8 @@ function Api.destroy()
 		pcall(function() c:Disconnect() end)
 	end
 	connections = {}
-	espConn, walkConn = nil, nil
+	espConn, moveConn, walkHookConn = nil, nil, nil
+	lastWalkHum = nil
 end
 
 LP.CharacterAdded:Connect(function()
@@ -1650,11 +1656,13 @@ LP.CharacterAdded:Connect(function()
 		swapStealHumanoid()
 		patchRigSyncKnockback()
 	end
-	if walkSpeedOn then applyWalkSpeed() end
-	if flyOn then
-		stopFly()
-		task.wait(0.2)
-		startFly()
+	lastWalkHum = nil
+	if walkSpeedOn then
+		applyWalkSpeed()
+	end
+	if flyOn and not autoFarm then
+		local hum = getHum()
+		if hum then hum.PlatformStand = true end
 	end
 end)
 

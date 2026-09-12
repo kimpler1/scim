@@ -4,7 +4,7 @@
   Core: Glitch_Core.lua (Quest v18 farm + split ESP + walk/fly)
 ]]
 
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=g1"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=g2"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -27,7 +27,7 @@ local BIOMES = {
 
 local selectedBiome = 1
 local approachSpeed, escapeSpeed = 250, 480
-local walkSpeedVal, flySpeedVal = 28, 60
+local walkSpeedVal, flySpeedVal = 32, 60
 local autoOn = false
 local coreApi, coreLoaded = nil, false
 local statusLbl, biomeLbl
@@ -183,7 +183,7 @@ corner(brandDot, 5)
 local title = Instance.new("TextLabel")
 title.BackgroundTransparency = 1
 title.Position = UDim2.fromOffset(34, 4)
-title.Size = UDim2.new(0, 220, 0, 22)
+title.Size = UDim2.new(0, 280, 0, 22)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 15
 title.TextColor3 = TEXT
@@ -194,26 +194,13 @@ title.Parent = header
 local sub = Instance.new("TextLabel")
 sub.BackgroundTransparency = 1
 sub.Position = UDim2.fromOffset(34, 22)
-sub.Size = UDim2.new(0, 220, 0, 16)
+sub.Size = UDim2.new(0, 280, 0, 16)
 sub.Font = Enum.Font.Gotham
 sub.TextSize = 11
 sub.TextColor3 = MUTED
 sub.TextXAlignment = Enum.TextXAlignment.Left
 sub.Text = "glass ui  ·  quest farm"
 sub.Parent = header
-
-local pill = Instance.new("TextLabel")
-pill.Size = UDim2.fromOffset(72, 24)
-pill.Position = UDim2.new(0.5, -36, 0.5, -12)
-pill.BackgroundColor3 = ACCENT_SOFT
-pill.BackgroundTransparency = 0.25
-pill.Font = Enum.Font.GothamBold
-pill.TextSize = 12
-pill.TextColor3 = TEXT
-pill.Text = "Keyless"
-pill.Parent = header
-corner(pill, 12)
-stroke(pill, ACCENT, 1)
 
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.fromOffset(28, 28)
@@ -726,15 +713,18 @@ walkToggle = makeToggle(playerPage, "Walk Speed", false, function(on)
 	end
 	if coreApi.setWalkSpeed then coreApi.setWalkSpeed(on, walkSpeedVal) end
 end)
-makeSlider(playerPage, "Walk Speed value", 16, 200, walkSpeedVal, function(v)
+makeSlider(playerPage, "Walk Speed value", 16, 500, walkSpeedVal, function(v)
 	walkSpeedVal = v
-	if walkToggle.get() and coreApi and coreApi.setWalkSpeed then
-		coreApi.setWalkSpeed(true, walkSpeedVal)
+	-- dragging slider implies you want it on (Boblo-style always apply while enabled)
+	if not walkToggle.get() then
+		walkToggle.set(true)
 	end
+	if not loadCore() then return end
+	if coreApi.setWalkSpeed then coreApi.setWalkSpeed(true, walkSpeedVal) end
 end)
 
 local flyToggle
-flyToggle = makeToggle(playerPage, "Fly (WASD + Space/Shift)", false, function(on)
+flyToggle = makeToggle(playerPage, "Fly (WASD + Space/Ctrl)", false, function(on)
 	if not loadCore() then
 		flyToggle.set(false)
 		return
@@ -748,7 +738,7 @@ makeSlider(playerPage, "Fly Speed", 10, 200, flySpeedVal, function(v)
 	end
 end)
 
-local flyHint = glassRow(playerPage, 64)
+local flyHint = glassRow(playerPage, 72)
 local fh = Instance.new("TextLabel")
 fh.BackgroundTransparency = 1
 fh.Position = UDim2.fromOffset(14, 8)
@@ -759,7 +749,7 @@ fh.TextColor3 = MUTED
 fh.TextWrapped = true
 fh.TextXAlignment = Enum.TextXAlignment.Left
 fh.TextYAlignment = Enum.TextYAlignment.Top
-fh.Text = "BodyVelocity fly — smooth, no TP. Auto farm turns fly off while stealing."
+fh.Text = "Fly = Boblo CFrame*dt (no BodyVelocity). Start ~60. Walk Speed toggle must be ON (slider auto-enables)."
 fh.Parent = flyHint
 
 -- default page
