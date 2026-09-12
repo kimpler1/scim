@@ -73,6 +73,22 @@ Loader template:
   ))()
 
 ----------------------------------------------------------------
+6) ANTI-KNOCKBACK / RANGED HIT (v14)
+----------------------------------------------------------------
+Far hit while client already moved away = server catch + client
+RigSync fling applied late.
+
+Open source fix (Lutosys):
+  https://raw.githubusercontent.com/Lutosys/opensrc/refs/heads/main/stealaeggnoknockback.lua
+  Disconnect getconnections(RE/RigSync/Refresh.OnClientEvent)
+
+Local copy:
+  ref_scripts\lutosys_noknockback.lua
+
+v14 also: recoverStand mid-path, resume lastEggUid (no biome restart),
+retry waypoints, do not force carrying=false.
+
+----------------------------------------------------------------
 5) NEXT TIME WE NEED A FEATURE
 ----------------------------------------------------------------
   1. Open Boblo_StealAnEgg_READABLE.lua and search the feature name
