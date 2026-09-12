@@ -132,7 +132,7 @@ local function bindGame()
 				end
 			end)
 		end
-		return got or isActuallyCarrying()
+		return got
 	end
 
 	local objects = ch(Workspace, "__" .. "OBJECTS", 3)
