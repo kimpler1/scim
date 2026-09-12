@@ -1,8 +1,6 @@
 --[[
-  Steal An Egg — Core v16
-  Movement = Boblo stealMoveTo + Oxide carry detect / abort.
-  v15: instant escape. v16: stop ghost-flight when server steals egg / kills you;
-       DropHeldEgg GUI carry check; elevated fast escape; reclaim after mid-flight loss.
+  Steal An Egg — Core v16.1
+  Fix: isAlive/isActuallyCarrying declared before stealMoveTo (nil call crash).
 ]]
 
 local Players = game:GetService("Players")
@@ -214,6 +212,42 @@ local function isDowned()
 		or st == Enum.HumanoidStateType.Ragdoll
 		or st == Enum.HumanoidStateType.FallingDown
 		or st == Enum.HumanoidStateType.GettingUp
+end
+
+-- MUST be above stealMoveTo (Lua locals are not visible before declaration)
+local function isActuallyCarrying()
+	local pg = LP:FindFirstChildOfClass("PlayerGui")
+	local dropGui = pg and pg:FindFirstChild("DropHeldEgg")
+	if dropGui and dropGui.Enabled == true then
+		return true
+	end
+	local char = getChar()
+	if not char then return false end
+	if LP:GetAttribute("IsCarryingEgg") == true or char:GetAttribute("IsCarryingEgg") == true then
+		return true
+	end
+	for _, t in ipairs(char:GetChildren()) do
+		if t:IsA("Model") then
+			local n = t.Name:lower()
+			if n:find("egg", 1, true) or t:GetAttribute("Uid") or t:GetAttribute("AssetCategory") then
+				return true
+			end
+		elseif t:IsA("Tool") then
+			local n = t.Name:lower()
+			if n:find("egg", 1, true) or t:GetAttribute("IsEgg") == true or t:GetAttribute("Uid") ~= nil then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function isAlive()
+	local hum = getHum()
+	local hrp = getHRP()
+	if not hum or not hrp or not hrp.Parent then return false end
+	if hum.Health <= 0 then return false end
+	return true
 end
 
 -- Boblo: kill PushBack + optional humanoid clone (chicken knockback)
@@ -560,42 +594,6 @@ local function findPrompt(egg)
 	for _, d in ipairs(egg:GetDescendants()) do
 		if d:IsA("ProximityPrompt") then return d end
 	end
-end
-
--- Oxide: DropHeldEgg GUI is the reliable "still holding" signal
-local function isActuallyCarrying()
-	local pg = LP:FindFirstChildOfClass("PlayerGui")
-	local dropGui = pg and pg:FindFirstChild("DropHeldEgg")
-	if dropGui and dropGui.Enabled == true then
-		return true
-	end
-	local char = getChar()
-	if not char then return false end
-	if LP:GetAttribute("IsCarryingEgg") == true or char:GetAttribute("IsCarryingEgg") == true then
-		return true
-	end
-	for _, t in ipairs(char:GetChildren()) do
-		if t:IsA("Model") then
-			local n = t.Name:lower()
-			if n:find("egg", 1, true) or t:GetAttribute("Uid") or t:GetAttribute("AssetCategory") then
-				return true
-			end
-		elseif t:IsA("Tool") then
-			local n = t.Name:lower()
-			if n:find("egg", 1, true) or t:GetAttribute("IsEgg") == true or t:GetAttribute("Uid") ~= nil then
-				return true
-			end
-		end
-	end
-	return false
-end
-
-local function isAlive()
-	local hum = getHum()
-	local hrp = getHRP()
-	if not hum or not hrp or not hrp.Parent then return false end
-	if hum.Health <= 0 then return false end
-	return true
 end
 
 local function refreshCarry()
