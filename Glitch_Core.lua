@@ -1,10 +1,11 @@
 --[[
   Glitch Core — Steal An Egg
   Farm: Quest V18 lineage. ESP + Walk/Fly + Oxide Evidence scrub.
-  VER: V24  After regrab → peel immediately (no linger / second guard hit)
+  VER: V25  WS/Fly: throttle Evidence scrub (was getgc every frame = lag); plant-only deliver assist
+  FROZEN: autofarm path (farmOnce / guardHitThenRegrab / peelThenEscape) — do not edit unless LO asks
 ]]
 
-local GLITCH_CORE_VER = "V24"
+local GLITCH_CORE_VER = "V25"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -1135,8 +1136,10 @@ end
 
 local function ensureDeliverAssist()
 	if deliverAssistConn then return end
+	-- Manual WS/Fly: PlantEgg only when in plot.
+	-- Do NOT auto-run guardHitThenRegrab here — freezes movement + steals control from LO.
+	-- (Autofarm already owns full guard-hit → peel path. Leave it alone.)
 	deliverAssistConn = RunService.Heartbeat:Connect(function()
-		-- Autofarm owns carry/plant entirely — assist must not touch flags or PlantEgg
 		if autoFarm then
 			if freezeMoveForValidate or deliverAssistBusy then
 				cancelManualDeliverAssist()
@@ -1151,11 +1154,9 @@ local function ensureDeliverAssist()
 
 		local carryingNow = isActuallyCarrying()
 		if carryingNow and not wasCarryingEdge then
-			stealValidated = false
 			carrying = true
-			runManualStealValidate()
+			setStatus("Carrying — bank in plot (PlantEgg)")
 		elseif not carryingNow and wasCarryingEdge then
-			stealValidated = false
 			carrying = false
 		end
 		wasCarryingEdge = carryingNow
@@ -1165,7 +1166,6 @@ local function ensureDeliverAssist()
 			if n > 0 then
 				setStatus("Planted " .. tostring(n))
 				carrying = false
-				stealValidated = false
 			end
 		end
 	end)
@@ -1673,7 +1673,6 @@ local function scrubIntegrityTables()
 					if rawget(o, "InvalidHeartbeatCount") ~= nil then rawset(o, "InvalidHeartbeatCount", 0) end
 					local los = rawget(o, "LastObservedSample")
 					if los ~= nil then
-						-- While moving with cheats: keep trusted samples = observed (stops soft snap-back)
 						if forceSamples or rawget(o, "LastGameplayTrustedSample") == nil then
 							rawset(o, "LastGameplayTrustedSample", los)
 						end
@@ -1695,6 +1694,76 @@ local function scrubIntegrityTables()
 		end
 	end
 	return hit
+end
+
+-- Oxide: find Evidence table once, scrub ~5/s — NEVER getgc every Heartbeat (that freezes the client)
+local integrityState = nil
+local scrubLoopStarted = false
+
+local function findIntegrityTable()
+	if typeof(getgc) ~= "function" then return nil end
+	local ok, objs = pcall(getgc, true)
+	if not ok or not objs then return nil end
+	for _, o in pairs(objs) do
+		if type(o) == "table" then
+			local hit = false
+			pcall(function()
+				hit = (rawget(o, "ValidationLocked") ~= nil and rawget(o, "Evidence") ~= nil)
+					or (rawget(o, "ThreatLevel") ~= nil and rawget(o, "LastObservedSample") ~= nil)
+			end)
+			if hit then return o end
+		end
+	end
+	return nil
+end
+
+local function scrubCachedIntegrity()
+	if not integrityState then
+		integrityState = findIntegrityTable()
+		if not integrityState then return false end
+	end
+	local st = integrityState
+	local forceSamples = walkSpeedOn or flyOn
+	pcall(function()
+		local ev = rawget(st, "Evidence")
+		if type(ev) == "table" then
+			if (tonumber(ev.Speed) or 0) > 0 then rawset(ev, "Speed", 0) end
+			if (tonumber(ev.Teleport) or 0) > 0 then rawset(ev, "Teleport", 0) end
+			if (tonumber(ev.Flight) or 0) > 0 then rawset(ev, "Flight", 0) end
+		end
+		if rawget(st, "ThreatLevel") ~= "Trusted" then rawset(st, "ThreatLevel", "Trusted") end
+		if rawget(st, "ValidationLocked") == true then rawset(st, "ValidationLocked", false) end
+		if rawget(st, "FirstSuspiciousAt") ~= nil then rawset(st, "FirstSuspiciousAt", nil) end
+		if rawget(st, "KickQueued") == true then rawset(st, "KickQueued", false) end
+		if rawget(st, "TamperScore") ~= nil then rawset(st, "TamperScore", 0) end
+		if rawget(st, "InvalidHeartbeatCount") ~= nil then rawset(st, "InvalidHeartbeatCount", 0) end
+		local los = rawget(st, "LastObservedSample")
+		if los ~= nil and forceSamples then
+			rawset(st, "LastGameplayTrustedSample", los)
+			rawset(st, "LastValidatedSample", los)
+			rawset(st, "LastValidatedGroundedSample", los)
+			rawset(st, "LastConfirmedGroundSample", los)
+			rawset(st, "LastGoodSample", los)
+		end
+	end)
+	return true
+end
+
+local function startEvidenceScrubLoop()
+	if scrubLoopStarted then return end
+	scrubLoopStarted = true
+	task.spawn(function()
+		while true do
+			if walkSpeedOn or flyOn then
+				if not scrubCachedIntegrity() then
+					integrityState = nil -- retry find next tick
+				end
+				task.wait(0.2) -- Oxide cadence
+			else
+				task.wait(0.5)
+			end
+		end
+	end)
 end
 
 local function hardenCharacterSignals()
@@ -1762,14 +1831,9 @@ local function installClientAc()
 	hardenCharacterSignals()
 	table.insert(parts, "signals")
 
-	-- Continuous Evidence scrub (Oxide) — zeros Speed/Flight/Teleport flags
-	local scrubConn = RunService.Heartbeat:Connect(function()
-		if walkSpeedOn or flyOn then
-			scrubIntegrityTables()
-		end
-	end)
-	table.insert(connections, scrubConn)
-	if scrubIntegrityTables() then
+	-- Oxide-style Evidence scrub: cached table @ 0.2s (NOT getgc every Heartbeat)
+	startEvidenceScrubLoop()
+	if scrubCachedIntegrity() or scrubIntegrityTables() then
 		table.insert(parts, "evidence")
 	else
 		table.insert(parts, "evidence?")

@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V24
+  VER: V25
 ]]
 
-local GLITCH_UI_VER = "V24"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v24"
+local GLITCH_UI_VER = "V25"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v25"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -751,7 +751,7 @@ fh.TextColor3 = MUTED
 fh.TextWrapped = true
 fh.TextXAlignment = Enum.TextXAlignment.Left
 fh.TextYAlignment = Enum.TextYAlignment.Top
-fh.Text = "V24: regrab → peel ASAP (no nest linger / 2nd guard hit)."
+fh.Text = "V25: WS/Fly no per-frame getgc lag. PlantEgg on base. Autofarm frozen."
 fh.Parent = flyHint
 
 -- default page
