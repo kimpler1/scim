@@ -1,8 +1,11 @@
 --[[
   Glitch Core — Steal An Egg
   Farm: Quest V18 lineage. ESP + Walk/Fly + Oxide Evidence scrub.
-  VER: V25  WS/Fly: throttle Evidence scrub (was getgc every frame = lag); plant-only deliver assist
-  FROZEN: autofarm path (farmOnce / guardHitThenRegrab / peelThenEscape) — do not edit unless LO asks
+  VER: V25
+  FROZEN (LO 2026-09-15):
+    - Autofarm: farmOnce / guardHitThenRegrab / peelThenEscape
+    - WS + Fly: scrub @0.2s cached, unanchored velocity fly, WS loop
+    Manual WS/Fly steal: 1 guard hit → 2nd grab → base (do not auto-freeze/validate)
 ]]
 
 local GLITCH_CORE_VER = "V25"
