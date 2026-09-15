@@ -1,10 +1,10 @@
 --[[
   Glitch Core — Steal An Egg
   Farm: Quest V18 lineage. ESP + Walk/Fly + Oxide Evidence scrub.
-  VER: V21  Fly = unanchored CFrame+velocity (Anchored desync: no steal + snap on disable)
+  VER: V22  Manual WS/Fly deliver assist: guard-hit regrab + PlantEgg (fixes Delivery failed)
 ]]
 
-local GLITCH_CORE_VER = "V21"
+local GLITCH_CORE_VER = "V22"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -64,6 +64,11 @@ local walkSpeedOn, walkSpeedVal = false, 32
 local flyOn, flySpeed = false, 60
 local moveConn
 local flyConn = nil
+local freezeMoveForValidate = false -- pause WS boost / fly travel during guard-hit validate
+local deliverAssistConn = nil
+local deliverAssistBusy = false
+local stealValidated = false
+local wasCarryingEdge = false
 local acInstalled = false
 local acStatus = "off"
 
@@ -927,18 +932,22 @@ local function approachAndSteal(egg, speed)
 end
 
 -- Oxide guard-hit double pickup: validates steal so base doesn't reject deliver
-local function guardHitThenRegrab(egg)
+-- keepGoing: predicate (default autoFarm). Manual WS/Fly assist passes its own.
+local function guardHitThenRegrab(egg, keepGoing)
 	if not CFG.guardHit then return isActuallyCarrying() end
 	if not egg then return isActuallyCarrying() end
 	local pos = eggPos(egg)
 	if not pos then return isActuallyCarrying() end
+	local alive = keepGoing or function()
+		return autoFarm
+	end
 
 	setStatus("Guard-hit wait")
 	local hum0 = getHum()
 	local startHealth = hum0 and hum0.Health or 100
 	local wasHit = false
 	local t0 = tick()
-	while tick() - t0 < 4.0 and autoFarm do
+	while tick() - t0 < 4.0 and alive() do
 		if not isActuallyCarrying() then
 			wasHit = true
 			break
@@ -952,7 +961,7 @@ local function guardHitThenRegrab(egg)
 				or st == Enum.HumanoidStateType.FallingDown then
 				wasHit = true
 				local tPost = tick()
-				while tick() - tPost < 0.85 and autoFarm do
+				while tick() - tPost < 0.85 and alive() do
 					if not isActuallyCarrying() then break end
 					task.wait(0.05)
 				end
@@ -970,7 +979,7 @@ local function guardHitThenRegrab(egg)
 	task.wait(0.55)
 	setStatus("Stand")
 	local tStand = tick()
-	while tick() - tStand < 3.0 and autoFarm do
+	while tick() - tStand < 3.0 and alive() do
 		if not isDowned() then break end
 		recoverStand()
 		task.wait(0.12)
@@ -1002,6 +1011,98 @@ local function guardHitThenRegrab(egg)
 		return true
 	end
 	return isActuallyCarrying()
+end
+
+local function findNearestFieldEgg(maxDist)
+	AreaEggs = AreaEggs or ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 1)
+	local hrp = getHRP()
+	if not AreaEggs or not hrp then return nil end
+	maxDist = maxDist or 45
+	local best, bestD
+	for _, egg in ipairs(AreaEggs:GetChildren()) do
+		local pos = eggPos(egg)
+		if pos then
+			local d = (pos - hrp.Position).Magnitude
+			if d <= maxDist and (not bestD or d < bestD) then
+				best, bestD = egg, d
+			end
+		end
+	end
+	return best
+end
+
+-- Manual WS/Fly: Oxide delivery fix without Auto Farm
+-- On pickup → pause move → guard-hit regrab → then PlantEgg spam in plot
+local function cheatMoveActive()
+	return (walkSpeedOn or flyOn) and not autoFarm
+end
+
+local function runManualStealValidate()
+	if deliverAssistBusy or autoFarm then return end
+	if not cheatMoveActive() then return end
+	deliverAssistBusy = true
+	freezeMoveForValidate = true
+	task.spawn(function()
+		bindGame()
+		patchRigSyncKnockback()
+		local egg = findEggByUid(lastEggUid) or findNearestFieldEgg(50) or findReclaimEgg()
+		if egg then
+			lastEggUid = egg.Name
+			local pos = eggPos(egg)
+			if pos then lastEggPos = pos end
+			setStatus("Validate steal (guard-hit)")
+			local ok = guardHitThenRegrab(egg, function()
+				return cheatMoveActive() or isActuallyCarrying()
+			end)
+			stealValidated = ok and isActuallyCarrying()
+			if stealValidated then
+				setStatus("Steal OK — run to base")
+			else
+				setStatus("Validate weak — PlantEgg on base")
+			end
+		else
+			stealValidated = isActuallyCarrying()
+			setStatus("No nest egg — PlantEgg on base")
+		end
+		freezeMoveForValidate = false
+		deliverAssistBusy = false
+	end)
+end
+
+local function ensureDeliverAssist()
+	if deliverAssistConn then return end
+	deliverAssistConn = RunService.Heartbeat:Connect(function()
+		if autoFarm then
+			wasCarryingEdge = isActuallyCarrying()
+			return
+		end
+		if not (walkSpeedOn or flyOn) then
+			wasCarryingEdge = isActuallyCarrying()
+			return
+		end
+
+		local carryingNow = isActuallyCarrying()
+		if carryingNow and not wasCarryingEdge then
+			-- Fresh pickup while WS/Fly — must validate or base returns egg to nest
+			stealValidated = false
+			carrying = true
+			runManualStealValidate()
+		elseif not carryingNow and wasCarryingEdge then
+			stealValidated = false
+			carrying = false
+		end
+		wasCarryingEdge = carryingNow
+
+		if carryingNow and isInPlot() then
+			local n = plantCarriedEggs()
+			if n > 0 then
+				setStatus("Planted " .. tostring(n))
+				carrying = false
+				stealValidated = false
+			end
+		end
+	end)
+	table.insert(connections, deliverAssistConn)
 end
 
 local function peelThenEscape()
@@ -1639,6 +1740,7 @@ local function ensureMoveLoop()
 	moveConn = RunService.RenderStepped:Connect(function(dt)
 		if not walkSpeedOn then return end
 		applyWalkSpeed()
+		if freezeMoveForValidate then return end
 		local hum = getHum()
 		local hrp = getHRP()
 		-- Extra: if game clamps WS, boost along MoveDirection (still scrubbed)
@@ -1657,6 +1759,7 @@ local function setWalkSpeedEnabled(on)
 	if walkSpeedOn then
 		local ac = installClientAc()
 		ensureMoveLoop()
+		ensureDeliverAssist()
 		hardenCharacterSignals()
 		applyWalkSpeed()
 		setStatus(("WS on %d | AC %s | %s"):format(walkSpeedVal, tostring(ac), GLITCH_CORE_VER))
@@ -1725,6 +1828,12 @@ local function startFly()
 		end
 		humanoid.PlatformStand = true
 
+		if freezeMoveForValidate then
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+			return
+		end
+
 		local look = cam.CFrame.LookVector
 		local right = cam.CFrame.RightVector
 		local flatLook = Vector3.new(look.X, 0, look.Z)
@@ -1749,7 +1858,6 @@ local function startFly()
 			local step = flySpeed * stepDt
 			local nextPos = root.Position + unit * step
 			root.CFrame = CFrame.lookAt(nextPos, nextPos + flatLook)
-			-- Oxide FlyToPoint: push velocity so physics/network see motion (not ghost CFrame)
 			root.AssemblyLinearVelocity = Vector3.new(
 				unit.X * flySpeed,
 				math.clamp(unit.Y * flySpeed, -flySpeed, flySpeed),
@@ -1761,6 +1869,7 @@ local function startFly()
 		root.AssemblyAngularVelocity = Vector3.zero
 	end)
 	table.insert(connections, flyConn)
+	ensureDeliverAssist()
 	setStatus(("Fly on %d | AC %s | %s"):format(flySpeed, tostring(ac), GLITCH_CORE_VER))
 end
 
@@ -1844,13 +1953,15 @@ function Api.destroy()
 	autoFarm = false
 	stopFly()
 	walkSpeedOn = false
+	freezeMoveForValidate = false
+	deliverAssistBusy = false
 	espFlags.players, espFlags.eggs, espFlags.beasts = false, false, false
 	clearEsp()
 	for _, c in ipairs(connections) do
 		pcall(function() c:Disconnect() end)
 	end
 	connections = {}
-	espConn, moveConn, flyConn = nil, nil, nil
+	espConn, moveConn, flyConn, deliverAssistConn = nil, nil, nil, nil
 end
 
 LP.CharacterAdded:Connect(function()

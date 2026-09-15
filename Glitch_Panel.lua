@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V21
+  VER: V22
 ]]
 
-local GLITCH_UI_VER = "V21"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v21"
+local GLITCH_UI_VER = "V22"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v22"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -751,7 +751,7 @@ fh.TextColor3 = MUTED
 fh.TextWrapped = true
 fh.TextXAlignment = Enum.TextXAlignment.Left
 fh.TextYAlignment = Enum.TextYAlignment.Top
-fh.Text = "V21 fly: physics CFrame+velocity (server sees you). Steal works. Max 250."
+fh.Text = "V22: on grab with WS/Fly → auto guard-hit validate + PlantEgg on base."
 fh.Parent = flyHint
 
 -- default page
