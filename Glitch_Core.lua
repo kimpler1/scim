@@ -1,10 +1,10 @@
 --[[
   Glitch Core — Steal An Egg
-  Farm: Quest Version (v18). ESP + Walk/Fly with Oxide-style client AC scrub.
-  VER: 0.4.1-ac  Fly = Oxide Anchored+BodyGyro (was Boblo PlatformStand → rubberband)
+  Farm: Quest V18 lineage. ESP + Walk/Fly + Oxide Evidence scrub.
+  VER: V21  Fly = unanchored CFrame+velocity (Anchored desync: no steal + snap on disable)
 ]]
 
-local GLITCH_CORE_VER = "0.4.1-ac"
+local GLITCH_CORE_VER = "V21"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -63,7 +63,7 @@ local espFolder, espConn
 local walkSpeedOn, walkSpeedVal = false, 32
 local flyOn, flySpeed = false, 60
 local moveConn
-local flyConn, flyGyro = nil, nil
+local flyConn = nil
 local acInstalled = false
 local acStatus = "off"
 
@@ -1479,6 +1479,7 @@ local function scrubIntegrityTables()
 	local hit = false
 	local ok, objs = pcall(getgc, true)
 	if not ok or not objs then return false end
+	local forceSamples = walkSpeedOn or flyOn
 	for _, o in pairs(objs) do
 		if type(o) == "table" then
 			local isEv = false
@@ -1503,11 +1504,22 @@ local function scrubIntegrityTables()
 					if rawget(o, "InvalidHeartbeatCount") ~= nil then rawset(o, "InvalidHeartbeatCount", 0) end
 					local los = rawget(o, "LastObservedSample")
 					if los ~= nil then
-						if rawget(o, "LastGameplayTrustedSample") == nil then rawset(o, "LastGameplayTrustedSample", los) end
-						if rawget(o, "LastValidatedSample") == nil then rawset(o, "LastValidatedSample", los) end
-						if rawget(o, "LastValidatedGroundedSample") == nil then rawset(o, "LastValidatedGroundedSample", los) end
-						if rawget(o, "LastConfirmedGroundSample") == nil then rawset(o, "LastConfirmedGroundSample", los) end
-						if rawget(o, "LastGoodSample") == nil then rawset(o, "LastGoodSample", los) end
+						-- While moving with cheats: keep trusted samples = observed (stops soft snap-back)
+						if forceSamples or rawget(o, "LastGameplayTrustedSample") == nil then
+							rawset(o, "LastGameplayTrustedSample", los)
+						end
+						if forceSamples or rawget(o, "LastValidatedSample") == nil then
+							rawset(o, "LastValidatedSample", los)
+						end
+						if forceSamples or rawget(o, "LastValidatedGroundedSample") == nil then
+							rawset(o, "LastValidatedGroundedSample", los)
+						end
+						if forceSamples or rawget(o, "LastConfirmedGroundSample") == nil then
+							rawset(o, "LastConfirmedGroundSample", los)
+						end
+						if forceSamples or rawget(o, "LastGoodSample") == nil then
+							rawset(o, "LastGoodSample", los)
+						end
 					end
 				end)
 			end
@@ -1621,7 +1633,7 @@ local function applyWalkSpeed()
 	hum.WalkSpeed = walkSpeedVal
 end
 
--- WalkSpeed loop only (fly is separate — Oxide Anchored path)
+-- WalkSpeed loop only (fly is separate)
 local function ensureMoveLoop()
 	if moveConn then return end
 	moveConn = RunService.RenderStepped:Connect(function(dt)
@@ -1656,25 +1668,17 @@ local function setWalkSpeedEnabled(on)
 	end
 end
 
--- Oxide Smooth Fly: Anchored HRP + BodyGyro + flat WASD (no PlatformStand rubberband)
+-- V21 fly: NOT Anchored (Anchored = client-only → no egg steal + snap on disable).
+-- Pattern = Oxide FlyToPoint physics (CFrame + AssemblyLinearVelocity) + flat WASD.
 local function stopFly()
 	flyOn = false
 	if flyConn then
 		pcall(function() flyConn:Disconnect() end)
 		flyConn = nil
 	end
-	if flyGyro then
-		pcall(function() flyGyro:Destroy() end)
-		flyGyro = nil
-	end
 	local hrp = getHRP()
 	if hrp then
 		pcall(function() hrp.Anchored = false end)
-		for _, c in ipairs(hrp:GetChildren()) do
-			if c:IsA("BodyGyro") and c.Name == "GlitchFlyGyro" then
-				pcall(function() c:Destroy() end)
-			end
-		end
 		hrp.AssemblyLinearVelocity = Vector3.zero
 		hrp.AssemblyAngularVelocity = Vector3.zero
 	end
@@ -1695,7 +1699,7 @@ local function startFly()
 		setStatus("Fly paused (Auto on)")
 		return
 	end
-	stopFly() -- clean previous gyro/anchor
+	stopFly()
 	local hrp = getHRP()
 	local hum = getHum()
 	if not (hrp and hum) then
@@ -1705,25 +1709,21 @@ local function startFly()
 	local ac = installClientAc()
 	hardenCharacterSignals()
 	flyOn = true
-	hrp.Anchored = true
-	hum.PlatformStand = false
+	-- Must stay unanchored so server replication + egg remotes see real position
+	hrp.Anchored = false
+	hum.PlatformStand = true
 
-	local bodyGyro = Instance.new("BodyGyro")
-	bodyGyro.Name = "GlitchFlyGyro"
-	bodyGyro.MaxTorque = Vector3.new(1, 1, 1) * 1e5
-	bodyGyro.P = 1e5
-	bodyGyro.CFrame = hrp.CFrame
-	bodyGyro.Parent = hrp
-	flyGyro = bodyGyro
-
-	flyConn = RunService.RenderStepped:Connect(function(dt)
+	flyConn = RunService.Heartbeat:Connect(function(dt)
 		if not flyOn or autoFarm then return end
 		local root = getHRP()
+		local humanoid = getHum()
 		local cam = Workspace.CurrentCamera
-		if not (root and cam) then return end
-		if not root.Anchored then
-			root.Anchored = true
+		if not (root and humanoid and cam) then return end
+
+		if root.Anchored then
+			root.Anchored = false
 		end
+		humanoid.PlatformStand = true
 
 		local look = cam.CFrame.LookVector
 		local right = cam.CFrame.RightVector
@@ -1743,13 +1743,22 @@ local function startFly()
 			dir = dir - Vector3.new(0, 1, 0)
 		end
 
+		local stepDt = math.min(dt, 0.1)
 		if dir.Magnitude > 0.05 then
-			-- Oxide: min(dt, 0.1) — was 0.05 + PlatformStand = slow + rubberband
-			root.CFrame = root.CFrame + dir.Unit * flySpeed * math.min(dt, 0.1)
+			local unit = dir.Unit
+			local step = flySpeed * stepDt
+			local nextPos = root.Position + unit * step
+			root.CFrame = CFrame.lookAt(nextPos, nextPos + flatLook)
+			-- Oxide FlyToPoint: push velocity so physics/network see motion (not ghost CFrame)
+			root.AssemblyLinearVelocity = Vector3.new(
+				unit.X * flySpeed,
+				math.clamp(unit.Y * flySpeed, -flySpeed, flySpeed),
+				unit.Z * flySpeed
+			)
+		else
+			root.AssemblyLinearVelocity = Vector3.zero
 		end
-		if flyGyro and flyGyro.Parent then
-			flyGyro.CFrame = CFrame.lookAt(root.Position, root.Position + look)
-		end
+		root.AssemblyAngularVelocity = Vector3.zero
 	end)
 	table.insert(connections, flyConn)
 	setStatus(("Fly on %d | AC %s | %s"):format(flySpeed, tostring(ac), GLITCH_CORE_VER))
@@ -1842,7 +1851,6 @@ function Api.destroy()
 	end
 	connections = {}
 	espConn, moveConn, flyConn = nil, nil, nil
-	flyGyro = nil
 end
 
 LP.CharacterAdded:Connect(function()
@@ -1858,7 +1866,6 @@ LP.CharacterAdded:Connect(function()
 	if walkSpeedOn then
 		applyWalkSpeed()
 	end
-	-- Re-bind Oxide fly on new character (Anchored + new gyro)
 	if flyOn and not autoFarm then
 		startFly()
 	end

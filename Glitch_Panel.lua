@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: 0.4.1-ac  (bump when shipping; remove at release if asked)
+  VER: V21
 ]]
 
-local GLITCH_UI_VER = "0.4.1-ac"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=g41"
+local GLITCH_UI_VER = "V21"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v21"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -201,7 +201,7 @@ sub.Font = Enum.Font.Gotham
 sub.TextSize = 11
 sub.TextColor3 = MUTED
 sub.TextXAlignment = Enum.TextXAlignment.Left
-sub.Text = ("glass ui  ·  quest farm  ·  v%s"):format(GLITCH_UI_VER)
+sub.Text = ("glass ui  ·  quest farm  ·  %s"):format(GLITCH_UI_VER)
 sub.Parent = header
 
 local closeBtn = Instance.new("TextButton")
@@ -659,7 +659,7 @@ statusLbl.TextColor3 = MUTED
 statusLbl.TextXAlignment = Enum.TextXAlignment.Left
 statusLbl.TextYAlignment = Enum.TextYAlignment.Top
 statusLbl.TextWrapped = true
-statusLbl.Text = ("Glitch UI v%s\nmount=%s\nload core → version in status"):format(GLITCH_UI_VER, tostring(howMount))
+statusLbl.Text = ("Glitch %s\nmount=%s\nload core → version in status"):format(GLITCH_UI_VER, tostring(howMount))
 statusLbl.Parent = statusRow
 
 prevB.MouseButton1Click:Connect(function()
@@ -751,7 +751,7 @@ fh.TextColor3 = MUTED
 fh.TextWrapped = true
 fh.TextXAlignment = Enum.TextXAlignment.Left
 fh.TextYAlignment = Enum.TextYAlignment.Top
-fh.Text = "Oxide Anchored fly (WASD flat + Space/Shift). Max 250. Status = AC layers."
+fh.Text = "V21 fly: physics CFrame+velocity (server sees you). Steal works. Max 250."
 fh.Parent = flyHint
 
 -- default page
