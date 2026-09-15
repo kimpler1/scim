@@ -1,14 +1,11 @@
 --[[
   Glitch Core — Steal An Egg
   Farm: Quest V18 lineage. ESP + Walk/Fly + Oxide Evidence scrub.
-  VER: V26  Rarest-in-biome steal target + Auto Hatch (farm steal/escape frozen)
-  FROZEN (LO 2026-09-15):
-    - Autofarm steal/escape: guardHitThenRegrab / peelThenEscape / stealMoveTo timing
-    - WS + Fly
-    Manual WS/Fly: 1 guard hit → 2nd grab → base
+  VER: V27  Restore nearest-egg Auto Steal (V25); keep Auto Hatch; no rarest targeting
+  FROZEN: steal/escape timing, WS, Fly — do not change unless LO asks
 ]]
 
-local GLITCH_CORE_VER = "V26"
+local GLITCH_CORE_VER = "V27"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -603,85 +600,6 @@ local function nearBiomeCenter(pos, biome)
 	return math.abs(pos.X - center.X) <= rx and math.abs(pos.Z - center.Z) <= rz
 end
 
--- Oxide Rare Egg Hunter scores (higher = steal first)
-local RARITY_SCORE_MAP = {
-	["Titan"] = 1100,
-	["Divine"] = 1000,
-	["Transcendent"] = 1000,
-	["Superior"] = 1000,
-	["Eternal"] = 900,
-	["Limited"] = 900,
-	["Secret"] = 800,
-	["Exotic"] = 800,
-	["Cosmic"] = 700,
-	["Exclusive"] = 700,
-	["Admin"] = 700,
-	["Mythic"] = 600,
-	["Mythical"] = 600,
-	["Prismatic"] = 600,
-	["Rainbow"] = 600,
-	["Squishy God"] = 600,
-	["BrainrotGod"] = 600,
-	["Legendary"] = 500,
-	["Epic"] = 400,
-	["Rare"] = 300,
-	["SuperRare"] = 200,
-	["Celestial"] = 200,
-	["Uncommon"] = 200,
-	["Basic"] = 100,
-	["Common"] = 100,
-}
-
-local function rarityNameAndScore(rec, egg)
-	local function fromRarity(r)
-		if r == nil then return nil, nil end
-		if type(r) == "table" then
-			local name = r.DisplayName or r._id or r.Name or r.Id
-			local score = RARITY_SCORE_MAP[tostring(name or "")]
-			if not score and tonumber(r.RarityNumber) then
-				score = tonumber(r.RarityNumber) * 100
-			end
-			return tostring(name or "Common"), score or 100
-		end
-		local name = tostring(r)
-		return name, RARITY_SCORE_MAP[name] or 100
-	end
-
-	if typeof(rec) == "table" then
-		local n, s = fromRarity(rec.Rarity)
-		if n then return n, s end
-		n, s = fromRarity(rec.RarityName or rec.RarityId)
-		if n then return n, s end
-		local cat = rec.AssetCategory or rec.Category
-		if typeof(cat) == "string" then
-			-- soft hint from category string containing rarity tokens
-			for token, score in pairs(RARITY_SCORE_MAP) do
-				if cat:lower():find(token:lower(), 1, true) then
-					return token, score
-				end
-			end
-		end
-	end
-	if egg then
-		local attr = egg:GetAttribute("Rarity") or egg:GetAttribute("RarityName")
-		local n, s = fromRarity(attr)
-		if n then return n, s end
-	end
-	return "Common", 100
-end
-
-local function eggSizeScore(egg)
-	if not egg then return 0 end
-	local ok, size = pcall(function()
-		if egg:IsA("Model") then
-			return egg:GetExtentsSize().Magnitude
-		end
-		local p = egg:FindFirstChildWhichIsA("BasePart", true)
-		return p and p.Size.Magnitude or 0
-	end)
-	return (ok and typeof(size) == "number") and size or 0
-end
-
 local function eggInSelectedBiome(egg, record)
 	local biome = CFG.biomes[CFG.biomeIndex]
 	if record and areaMatches(record.AreaId, biome) then return true end
@@ -696,13 +614,14 @@ local function eggInSelectedBiome(egg, record)
 			return true
 		end
 	end
+	-- Late biomes often have eggs with nil/stale snapshot records — match by Oxide coords
 	if nearBiomeCenter(pos, biome) then
 		return true
 	end
 	return false
 end
 
--- Pick rarest egg in selected biome (tie-break: bigger, then nearer). Name kept for farmOnce.
+-- V25 working target: nearest egg in selected biome (rarest targeting removed — broke Auto Steal)
 local function nearestEggInBiome()
 	AreaEggs = AreaEggs or ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 1)
 	if not AreaEggs then return nil end
@@ -711,48 +630,39 @@ local function nearestEggInBiome()
 	local biome = CFG.biomes[CFG.biomeIndex]
 	local center = getBiomeCenter(biome) or BIOME_CENTERS[biome]
 	local recs = recordsByUid()
-
-	local best, bestR, bestSize, bestDist, bestRarityName
-	local function consider(egg, rec, pos)
-		local rName, rScore = rarityNameAndScore(rec, egg)
-		local size = eggSizeScore(egg)
-		local d = (pos - hrp.Position).Magnitude
-		local better = false
-		if not best then
-			better = true
-		elseif rScore > bestR then
-			better = true
-		elseif rScore == bestR and size > bestSize + 0.05 then
-			better = true
-		elseif rScore == bestR and math.abs(size - bestSize) <= 0.05 and d < bestDist then
-			better = true
-		end
-		if better then
-			best, bestR, bestSize, bestDist, bestRarityName = egg, rScore, size, d, rName
-		end
-	end
-
+	local best, bestDist
+	local fallback, fallbackDist
 	for _, egg in ipairs(AreaEggs:GetChildren()) do
 		local rec = recs[egg.Name]
 		local pos = eggPos(egg)
-		if pos and eggInSelectedBiome(egg, rec) then
-			consider(egg, rec, pos)
-		end
-	end
-	if best then
-		return best, bestDist, bestRarityName
-	end
-
-	-- Fallback corridor — still rarest among corridor hits
-	if center then
-		for _, egg in ipairs(AreaEggs:GetChildren()) do
-			local pos = eggPos(egg)
-			if pos and (nearBiomeCenter(pos, biome) or math.abs(pos.X - center.X) < 280) then
-				consider(egg, recs[egg.Name], pos)
+		if not pos then
+			-- skip
+		elseif eggInSelectedBiome(egg, rec) then
+			local d = (pos - hrp.Position).Magnitude
+			if not bestDist or d < bestDist then
+				best, bestDist = egg, d
+			end
+		elseif center and nearBiomeCenter(pos, biome) then
+			local d = (pos - center).Magnitude
+			if not fallbackDist or d < fallbackDist then
+				fallback, fallbackDist = egg, d
 			end
 		end
 	end
-	return best, bestDist, bestRarityName
+	if best then return best, bestDist end
+	if fallback then return fallback, fallbackDist end
+	if center then
+		for _, egg in ipairs(AreaEggs:GetChildren()) do
+			local pos = eggPos(egg)
+			if pos and math.abs(pos.X - center.X) < 280 then
+				local d = (pos - hrp.Position).Magnitude
+				if not bestDist or d < bestDist then
+					best, bestDist = egg, d
+				end
+			end
+		end
+	end
+	return best, bestDist
 end
 
 local function findPrompt(egg)
@@ -1346,7 +1256,7 @@ local function farmOnce()
 		end
 	end
 
-	local egg, _, rarityName = nearestEggInBiome()
+	local egg = nearestEggInBiome()
 	if not egg then
 		setStatus("No eggs " .. biome)
 		task.wait(0.5)
@@ -1355,7 +1265,7 @@ local function farmOnce()
 
 	local pos = eggPos(egg)
 	hrp = getHRP()
-	setStatus("Approach " .. tostring(rarityName or "egg"))
+	setStatus("Approach")
 	if not hrp or not pos or not stealAlong(buildStealPath(hrp.Position, pos), CFG.approachSpeed) then
 		setStatus("Approach abort")
 		return
