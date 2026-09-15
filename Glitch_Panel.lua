@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player | General
-  VER: V28
+  VER: V29
 ]]
 
-local GLITCH_UI_VER = "V28"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v28"
+local GLITCH_UI_VER = "V29"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v29"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -82,80 +82,80 @@ local LANG_LABEL = {
 local I18N = {
 	en = {
 		features = "Features", main = "Main", esp = "ESP", player = "Player", general = "General",
-		autofarm = "Autofarm", auto_steal = "Auto Steal Egg", steal_rarest = "Steal Rarest Egg",
+		autofarm = "Autofarm", auto_steal = "Auto Steal Egg",
 		zone = "Zone", approach_escape = "Approach  ·  Escape", approach = "Approach", escape = "Escape",
 		prev = "< Prev", next = "Next >", world_esp = "World ESP", players = "Players", eggs = "Eggs",
 		beasts = "Beasts / Night",
 		esp_hint = "Beasts: MonsterParasite + zone guards + night/boss models.",
 		movement = "Movement", walk_speed = "Walk Speed", walk_value = "Walk Speed value",
 		fly = "Fly (WASD + Space/Ctrl)", fly_speed = "Fly Speed",
-		fly_hint = "V28: Autofarm = V25 nearest. Optional Steal Rarest Egg. No Auto Hatch.",
+		fly_hint = "V29 = V25 farm/WS/Fly. Languages in General.",
 		language = "Language", lang_hint = "UI language only. Biome names stay in-game.",
 		subtitle = "glass ui  ·  quest farm  ·  %s",
 		status_boot = "Glitch %s\nmount=%s\nload core → version in status",
 	},
 	ru = {
 		features = "Функции", main = "Основное", esp = "ESP", player = "Игрок", general = "Общее",
-		autofarm = "Автофарм", auto_steal = "Авто кража яиц", steal_rarest = "Украсть самое редкое яйцо",
+		autofarm = "Автофарм", auto_steal = "Авто кража яиц",
 		zone = "Зона", approach_escape = "Подход  ·  Уход", approach = "Подход", escape = "Уход",
 		prev = "< Назад", next = "Далее >", world_esp = "Мир ESP", players = "Игроки", eggs = "Яйца",
 		beasts = "Монстры / Ночь",
 		esp_hint = "Монстры: паразит + гарды + ночь/боссы.",
 		movement = "Движение", walk_speed = "Скорость ходьбы", walk_value = "Значение скорости",
 		fly = "Полёт (WASD + Space/Ctrl)", fly_speed = "Скорость полёта",
-		fly_hint = "V28: автофарм = V25 ближайшее. Опция: самое редкое. Без автохэтча.",
+		fly_hint = "V29 = V25 автофарм/WS/Fly. Языки во вкладке Общее.",
 		language = "Язык", lang_hint = "Только язык интерфейса. Биомы как в игре.",
 		subtitle = "glass ui  ·  quest farm  ·  %s",
 		status_boot = "Glitch %s\nmount=%s\nзагрузка core → версия в статусе",
 	},
 	zh = {
 		features = "功能", main = "主页", esp = "ESP", player = "玩家", general = "通用",
-		autofarm = "自动挂机", auto_steal = "自动偷蛋", steal_rarest = "偷最稀有的蛋",
+		autofarm = "自动挂机", auto_steal = "自动偷蛋",
 		zone = "区域", approach_escape = "接近  ·  撤离", approach = "接近", escape = "撤离",
 		prev = "< 上一个", next = "下一个 >", world_esp = "世界 ESP", players = "玩家", eggs = "蛋",
 		beasts = "野兽 / 夜晚", esp_hint = "野兽：寄生虫 + 守卫 + 夜晚/Boss。",
 		movement = "移动", walk_speed = "步行速度", walk_value = "速度数值",
 		fly = "飞行 (WASD + Space/Ctrl)", fly_speed = "飞行速度",
-		fly_hint = "V28：自动=最近的蛋(V25)。可选最稀有。无自动孵化。",
+		fly_hint = "V29 = V25 挂机/步行/飞行。语言在通用。",
 		language = "语言", lang_hint = "仅界面语言。生物群系名保持游戏原文。",
 		subtitle = "glass ui  ·  quest farm  ·  %s",
 		status_boot = "Glitch %s\nmount=%s\n加载 core → 状态栏版本",
 	},
 	de = {
 		features = "Funktionen", main = "Haupt", esp = "ESP", player = "Spieler", general = "Allgemein",
-		autofarm = "Autofarm", auto_steal = "Auto Eier stehlen", steal_rarest = "Seltenstes Ei stehlen",
+		autofarm = "Autofarm", auto_steal = "Auto Eier stehlen",
 		zone = "Zone", approach_escape = "Anflug  ·  Flucht", approach = "Anflug", escape = "Flucht",
 		prev = "< Zurück", next = "Weiter >", world_esp = "Welt ESP", players = "Spieler", eggs = "Eier",
 		beasts = "Bestien / Nacht", esp_hint = "Bestien: Parasit + Wachen + Nacht/Bosse.",
 		movement = "Bewegung", walk_speed = "Laufgeschwindigkeit", walk_value = "Geschwindigkeitswert",
 		fly = "Flug (WASD + Space/Ctrl)", fly_speed = "Fluggeschwindigkeit",
-		fly_hint = "V28: Autofarm = V25 nächstes Ei. Optional seltenstes. Kein Auto-Hatch.",
+		fly_hint = "V29 = V25 Farm/WS/Fly. Sprachen unter Allgemein.",
 		language = "Sprache", lang_hint = "Nur UI-Sprache. Biom-Namen wie im Spiel.",
 		subtitle = "glass ui  ·  quest farm  ·  %s",
 		status_boot = "Glitch %s\nmount=%s\nCore laden → Version im Status",
 	},
 	fr = {
 		features = "Fonctions", main = "Principal", esp = "ESP", player = "Joueur", general = "Général",
-		autofarm = "Autofarm", auto_steal = "Vol auto d'œufs", steal_rarest = "Voler l'œuf le plus rare",
+		autofarm = "Autofarm", auto_steal = "Vol auto d'œufs",
 		zone = "Zone", approach_escape = "Approche  ·  Fuite", approach = "Approche", escape = "Fuite",
 		prev = "< Préc.", next = "Suiv. >", world_esp = "Monde ESP", players = "Joueurs", eggs = "Œufs",
 		beasts = "Bêtes / Nuit", esp_hint = "Bêtes : parasite + gardes + nuit/boss.",
 		movement = "Mouvement", walk_speed = "Vitesse de marche", walk_value = "Valeur de vitesse",
 		fly = "Vol (WASD + Space/Ctrl)", fly_speed = "Vitesse de vol",
-		fly_hint = "V28 : autofarm = œuf le plus proche (V25). Option plus rare. Pas d'éclosion auto.",
+		fly_hint = "V29 = V25 farm/WS/Fly. Langues dans Général.",
 		language = "Langue", lang_hint = "Langue UI uniquement. Biomes inchangés.",
 		subtitle = "glass ui  ·  quest farm  ·  %s",
 		status_boot = "Glitch %s\nmount=%s\ncharger core → version dans le statut",
 	},
 	es = {
 		features = "Funciones", main = "Principal", esp = "ESP", player = "Jugador", general = "General",
-		autofarm = "Autofarm", auto_steal = "Robo auto de huevos", steal_rarest = "Robar el huevo más raro",
+		autofarm = "Autofarm", auto_steal = "Robo auto de huevos",
 		zone = "Zona", approach_escape = "Acercar  ·  Escapar", approach = "Acercar", escape = "Escapar",
 		prev = "< Ant.", next = "Sig. >", world_esp = "Mundo ESP", players = "Jugadores", eggs = "Huevos",
 		beasts = "Bestias / Noche", esp_hint = "Bestias: parásito + guardias + noche/jefes.",
 		movement = "Movimiento", walk_speed = "Velocidad al caminar", walk_value = "Valor de velocidad",
 		fly = "Vuelo (WASD + Space/Ctrl)", fly_speed = "Velocidad de vuelo",
-		fly_hint = "V28: autofarm = huevo más cercano (V25). Opción más raro. Sin hatch auto.",
+		fly_hint = "V29 = V25 farm/WS/Fly. Idiomas en General.",
 		language = "Idioma", lang_hint = "Solo idioma de la UI. Biomas como en el juego.",
 		subtitle = "glass ui  ·  quest farm  ·  %s",
 		status_boot = "Glitch %s\nmount=%s\ncargar core → versión en el estado",
@@ -207,7 +207,6 @@ local function pushConfig()
 			biomes = BIOMES,
 			approachSpeed = approachSpeed,
 			escapeSpeed = escapeSpeed,
-			stealRarest = rarestToggle and rarestToggle.get() or false,
 			status = setStatus,
 		})
 	end
@@ -706,20 +705,6 @@ farmToggle = makeToggle(mainPage, "Auto Steal Egg", false, function(on)
 	end
 end)
 
-local rarestToggle
-rarestToggle = makeToggle(mainPage, "Steal Rarest Egg", false, function(on)
-	if not loadCore() then
-		rarestToggle.set(false)
-		return
-	end
-	pushConfig()
-	if coreApi.setStealRarest then
-		coreApi.setStealRarest(on)
-	elseif coreApi.setConfig then
-		coreApi.setConfig({ stealRarest = on })
-	end
-end)
-
 local zoneRow = glassRow(mainPage, 52)
 biomeLbl = Instance.new("TextLabel")
 biomeLbl.BackgroundTransparency = 1
@@ -910,7 +895,6 @@ local function applyLang(code)
 	if navBtns.General then navBtns.General.setText(tr("general")) end
 	secFarm.Text = string.upper(tr("autofarm"))
 	farmToggle.setLabel(tr("auto_steal"))
-	rarestToggle.setLabel(tr("steal_rarest"))
 	setBiomeLabel()
 	prevB.Text = tr("prev")
 	nextB.Text = tr("next")
