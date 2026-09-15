@@ -1,119 +1,42 @@
-SOURCES AND METHOD — Steal An Egg autofarm
+SOURCES AND METHOD — Steal An Egg / Glitch
 ==========================================
-Updated: 2026-09-12
-Frozen working baseline: Best Version\ = SAE v12 (do not edit scripts there)
-Live iteration: scim_repo\ + GitHub kimpler1/scim
+Updated: 2026-09-15
 
-----------------------------------------------------------------
-1) WHERE THE WORKING MOVEMENT CAME FROM
-----------------------------------------------------------------
-Primary readable source (this is what made v12 work):
+Live on GitHub (kimpler1/scim):
+  Glitch_Panel.lua  — UI loader (Main / ESP / Player)
+  Glitch_Core.lua   — farm (Quest v18 lineage) + ESP + walk/fly
+  SAE_DumpHub.lua   — dump obfuscated hubs (HttpGet / remotes)
 
-  URL:
-  https://raw.githubusercontent.com/bobloscript/scripts/refs/heads/main/opensource_egg
-
-  Local copy:
-  C:\Users\Sonic\Desktop\12312\ref_scripts\Boblo_StealAnEgg_READABLE.lua
-  C:\Users\Sonic\Desktop\12312\ref_scripts\boblo_opensource_egg.lua
-
-Key functions we copied / adapted:
-  H.stealMoveTo      — grounded CFrame steps, PlatformStand = false
-  H.groundedY        — raycast prefer "Ground", clamp to lane Y band
-  H.buildStealPath   — corridor along GameplayZ / SeparationLine lane
-  H.swapStealHumanoid — kill PushBack + humanoid clone vs chicken
-  EggApi.CarryFieldEgg / RF AskFieldEggCarry — actual steal remote
-  record.State == "Dropped" — egg on ground after knockback
-
-Boblo listing page (loader, not the readable file):
-  https://bobloscript.com/script/steal-an-egg-script-auto-steal-eggs-auto-fuse-pets
-
-----------------------------------------------------------------
-2) METHOD: BORROW FIRST, BUILD SECOND
-----------------------------------------------------------------
-Rule we settled on (saves tokens / time):
-
-  A. Search for open / recovered hubs for this place ID.
-  B. Prefer READABLE sources (Boblo opensource_egg). Copy the
-     movement + remote pattern into our thin panel/core.
-  C. If only obfuscated hubs exist (Potato, Axur, Luraph, WeAreDevs):
-     do NOT reverse by hand. Run SAE_DumpHub.lua first, then the hub,
-     then read dumped HttpGet / loadstring files + remotes.log.
-  D. Our panel/GUI stays ours (gethui + protect). Core movement
-     should match a known-working hub, not invent AlignPosition/fly.
-
-Dump helper (local + repo):
-  C:\Users\Sonic\Desktop\12312\SAE_DumpHub.lua
-  https://raw.githubusercontent.com/kimpler1/scim/main/SAE_DumpHub.lua
-
-Obfuscated examples we pulled (not useful until dumped):
-  potatohub67/potatoscripts stealaegg.lua
-  XE3Scripts/Axur-sGamesHub StealAnEgg
-  WhiteX1208 StealAnEggs.luau (Luraph)
-
-Dead / kick-only:
-  joustingmatch/Ouroboros games/stealanegg.lua  → "No Longer Supported"
-
-----------------------------------------------------------------
-3) WHAT FAILED WHEN WE INVENTED MOVEMENT
-----------------------------------------------------------------
-  AlignPosition / hard teleports → rubberband + BAC kicks
-  PlatformStand "fly" like Boblo MANUAL fly toggle → void / map unload
-  (Boblo AUTO-steal does NOT use that fly — it uses stealMoveTo on ground)
-
-----------------------------------------------------------------
-4) VERSION MAP
-----------------------------------------------------------------
-  Best Version\     = frozen v12 (works: steal eggs) — DO NOT EDIT
-  scim_repo v13+    = reclaim dropped eggs after knockback (iterate here)
-  GitHub main       = live loader for testing
-
-Loader template:
+Loader:
   loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/kimpler1/scim/main/StealAnEgg_Autofarm.lua?v=13"
+    "https://raw.githubusercontent.com/kimpler1/scim/refs/heads/main/Glitch_Panel.lua"
   ))()
 
-----------------------------------------------------------------
-6) ANTI-KNOCKBACK / RANGED HIT (v14)
-----------------------------------------------------------------
-Far hit while client already moved away = server catch + client
-RigSync fling applied late.
+Version bump: edit VER / GLITCH_UI_VER / GLITCH_CORE_VER + CORE_URL ?cb=
+in Glitch_Panel.lua / Glitch_Core.lua before each ship.
 
-Open source fix (Lutosys):
-  https://raw.githubusercontent.com/Lutosys/opensrc/refs/heads/main/stealaeggnoknockback.lua
-  Disconnect getconnections(RE/RigSync/Refresh.OnClientEvent)
-
-Local copy:
-  ref_scripts\lutosys_noknockback.lua
-
-v14 also: recoverStand mid-path, resume lastEggUid (no biome restart),
-retry waypoints, do not force carrying=false.
+Local frozen snapshots (Desktop\12312, NOT on GitHub):
+  Best Version\           = SAE v12 (Boblo grounded stealMoveTo)
+  Best Version\v17b_snapshot\ = late-biome steal before delivery fix
+  Quest version\          = ideal autofarm v18 (source of Glitch farm)
 
 ----------------------------------------------------------------
-7) OXIDE / FN (hard biomes, ghost-flight fix) — v16
+METHOD: BORROW FIRST, BUILD SECOND
 ----------------------------------------------------------------
-Fn (caomod2077) = Luraph obfuscated — dump with SAE_DumpHub if needed:
-  https://raw.githubusercontent.com/caomod2077/Script/refs/heads/main/Fn-stealanegg.lua
+  A. Prefer readable hubs (Boblo opensource_egg, Oxide StealAnEgg).
+  B. Obfuscated hubs → SAE_DumpHub first, then read dumps.
+  C. Panel/GUI stays ours (gethui + protect). Core movement =
+     grounded stealMoveTo (not AlignPosition / PlatformStand fly).
 
-Oxide loader (open) → scripts/StealAnEgg.lua (readable):
-  https://raw.githubusercontent.com/xulfo/OxideUiLibary2/main/ScriptLoader.lua
-  https://raw.githubusercontent.com/xulfo/OxideUiLibary2/main/scripts/StealAnEgg.lua
-  Local: ref_scripts\Oxide_StealAnEgg.lua
+Key lineage baked into Glitch_Core:
+  Boblo   — stealMoveTo, groundedY, buildStealPath, CarryFieldEgg
+  Lutosys — RigSync OnClientEvent disconnect (anti knockback)
+  Oxide   — DropHeldEgg carry detect, guard-hit regrab, PlantEgg,
+            BIOME_CENTERS, Evidence/AC scrub for walk/fly
 
-What we took for v16:
-  * Carry check = PlayerGui.DropHeldEgg.Enabled (not long-lived lastStealAt)
-  * Abort CFrame move when egg lost / dead (stops invisible ghost flight)
-  * RigSync disconnect (same as Lutosys)
-  * Faster elevated escape (escapeSpeed ~520, escapeHeight ~5.5)
-  * On mid-flight loss → Reclaim after hit (Dropped / lastEggUid)
+What failed when inventing movement:
+  AlignPosition / hard TP → rubberband + BAC
+  PlatformStand fly → void / map unload
 
-Oxide also has bypassReturnTP (SpawnLocation float) + Anti Guard
-double-pickup — optional later if still failing late biomes.
-
-----------------------------------------------------------------
-5) NEXT TIME WE NEED A FEATURE
-----------------------------------------------------------------
-  1. Open Boblo_StealAnEgg_READABLE.lua and search the feature name
-     (return, place, hatch, drop, sell, treadmill…).
-  2. If missing / outdated → dump a current working hub with SAE_DumpHub.
-  3. Port only that function into StealAnEgg_Core.lua.
-  4. Keep Best Version untouched as the known-good reference.
+ref_scripts\ on Desktop holds Boblo / Oxide / Lutosys / Fn / etc.
+Do not re-upload old StealAnEgg_v17* / v18* panels to this repo.
