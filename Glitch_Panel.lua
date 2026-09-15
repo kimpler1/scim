@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V25
+  VER: V26
 ]]
 
-local GLITCH_UI_VER = "V25"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v25"
+local GLITCH_UI_VER = "V26"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v26"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -594,6 +594,32 @@ farmToggle = makeToggle(mainPage, "Auto Steal Egg", false, function(on)
 	end
 end)
 
+local stealHint = glassRow(mainPage, 40)
+local sh = Instance.new("TextLabel")
+sh.BackgroundTransparency = 1
+sh.Position = UDim2.fromOffset(14, 0)
+sh.Size = UDim2.new(1, -28, 1, 0)
+sh.Font = Enum.Font.Gotham
+sh.TextSize = 11
+sh.TextColor3 = MUTED
+sh.TextXAlignment = Enum.TextXAlignment.Left
+sh.Text = "Target: rarest in zone (then biggest). Escape path unchanged."
+sh.Parent = stealHint
+
+local hatchToggle
+hatchToggle = makeToggle(mainPage, "Auto Hatch Ready Eggs", false, function(on)
+	if not loadCore() then
+		hatchToggle.set(false)
+		return
+	end
+	if coreApi.setAutoHatch then
+		coreApi.setAutoHatch(on)
+	else
+		setStatus("Core missing setAutoHatch — re-fetch")
+		hatchToggle.set(false)
+	end
+end)
+
 local zoneRow = glassRow(mainPage, 52)
 biomeLbl = Instance.new("TextLabel")
 biomeLbl.BackgroundTransparency = 1
@@ -751,7 +777,7 @@ fh.TextColor3 = MUTED
 fh.TextWrapped = true
 fh.TextXAlignment = Enum.TextXAlignment.Left
 fh.TextYAlignment = Enum.TextYAlignment.Top
-fh.Text = "V25: WS/Fly no per-frame getgc lag. PlantEgg on base. Autofarm frozen."
+fh.Text = "V26: rarest steal + Auto Hatch. WS/Fly/escape frozen."
 fh.Parent = flyHint
 
 -- default page

@@ -1,14 +1,14 @@
 --[[
   Glitch Core — Steal An Egg
   Farm: Quest V18 lineage. ESP + Walk/Fly + Oxide Evidence scrub.
-  VER: V25
+  VER: V26  Rarest-in-biome steal target + Auto Hatch (farm steal/escape frozen)
   FROZEN (LO 2026-09-15):
-    - Autofarm: farmOnce / guardHitThenRegrab / peelThenEscape
-    - WS + Fly: scrub @0.2s cached, unanchored velocity fly, WS loop
-    Manual WS/Fly steal: 1 guard hit → 2nd grab → base (do not auto-freeze/validate)
+    - Autofarm steal/escape: guardHitThenRegrab / peelThenEscape / stealMoveTo timing
+    - WS + Fly
+    Manual WS/Fly: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V25"
+local GLITCH_CORE_VER = "V26"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -60,6 +60,8 @@ local GetRespawn, GetPlot, InPlot, IsFirstUid, BuildSlotKey
 local AreasFolder, GuardAreas, AreaEggs
 local Bound = false
 local autoFarm, carrying, farmBusy = false, false, false
+local autoHatchOn = false
+local hatchConn = nil
 local connections = {}
 local espFlags = { players = false, eggs = false, beasts = false }
 local espMap = {} -- [key] = { hl, bb, label, kind }
@@ -601,6 +603,85 @@ local function nearBiomeCenter(pos, biome)
 	return math.abs(pos.X - center.X) <= rx and math.abs(pos.Z - center.Z) <= rz
 end
 
+-- Oxide Rare Egg Hunter scores (higher = steal first)
+local RARITY_SCORE_MAP = {
+	["Titan"] = 1100,
+	["Divine"] = 1000,
+	["Transcendent"] = 1000,
+	["Superior"] = 1000,
+	["Eternal"] = 900,
+	["Limited"] = 900,
+	["Secret"] = 800,
+	["Exotic"] = 800,
+	["Cosmic"] = 700,
+	["Exclusive"] = 700,
+	["Admin"] = 700,
+	["Mythic"] = 600,
+	["Mythical"] = 600,
+	["Prismatic"] = 600,
+	["Rainbow"] = 600,
+	["Squishy God"] = 600,
+	["BrainrotGod"] = 600,
+	["Legendary"] = 500,
+	["Epic"] = 400,
+	["Rare"] = 300,
+	["SuperRare"] = 200,
+	["Celestial"] = 200,
+	["Uncommon"] = 200,
+	["Basic"] = 100,
+	["Common"] = 100,
+}
+
+local function rarityNameAndScore(rec, egg)
+	local function fromRarity(r)
+		if r == nil then return nil, nil end
+		if type(r) == "table" then
+			local name = r.DisplayName or r._id or r.Name or r.Id
+			local score = RARITY_SCORE_MAP[tostring(name or "")]
+			if not score and tonumber(r.RarityNumber) then
+				score = tonumber(r.RarityNumber) * 100
+			end
+			return tostring(name or "Common"), score or 100
+		end
+		local name = tostring(r)
+		return name, RARITY_SCORE_MAP[name] or 100
+	end
+
+	if typeof(rec) == "table" then
+		local n, s = fromRarity(rec.Rarity)
+		if n then return n, s end
+		n, s = fromRarity(rec.RarityName or rec.RarityId)
+		if n then return n, s end
+		local cat = rec.AssetCategory or rec.Category
+		if typeof(cat) == "string" then
+			-- soft hint from category string containing rarity tokens
+			for token, score in pairs(RARITY_SCORE_MAP) do
+				if cat:lower():find(token:lower(), 1, true) then
+					return token, score
+				end
+			end
+		end
+	end
+	if egg then
+		local attr = egg:GetAttribute("Rarity") or egg:GetAttribute("RarityName")
+		local n, s = fromRarity(attr)
+		if n then return n, s end
+	end
+	return "Common", 100
+end
+
+local function eggSizeScore(egg)
+	if not egg then return 0 end
+	local ok, size = pcall(function()
+		if egg:IsA("Model") then
+			return egg:GetExtentsSize().Magnitude
+		end
+		local p = egg:FindFirstChildWhichIsA("BasePart", true)
+		return p and p.Size.Magnitude or 0
+	end)
+	return (ok and typeof(size) == "number") and size or 0
+end
+
 local function eggInSelectedBiome(egg, record)
 	local biome = CFG.biomes[CFG.biomeIndex]
 	if record and areaMatches(record.AreaId, biome) then return true end
@@ -615,13 +696,13 @@ local function eggInSelectedBiome(egg, record)
 			return true
 		end
 	end
-	-- Late biomes often have eggs with nil/stale snapshot records — match by Oxide coords
 	if nearBiomeCenter(pos, biome) then
 		return true
 	end
 	return false
 end
 
+-- Pick rarest egg in selected biome (tie-break: bigger, then nearer). Name kept for farmOnce.
 local function nearestEggInBiome()
 	AreaEggs = AreaEggs or ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 1)
 	if not AreaEggs then return nil end
@@ -630,40 +711,48 @@ local function nearestEggInBiome()
 	local biome = CFG.biomes[CFG.biomeIndex]
 	local center = getBiomeCenter(biome) or BIOME_CENTERS[biome]
 	local recs = recordsByUid()
-	local best, bestDist
-	local fallback, fallbackDist
+
+	local best, bestR, bestSize, bestDist, bestRarityName
+	local function consider(egg, rec, pos)
+		local rName, rScore = rarityNameAndScore(rec, egg)
+		local size = eggSizeScore(egg)
+		local d = (pos - hrp.Position).Magnitude
+		local better = false
+		if not best then
+			better = true
+		elseif rScore > bestR then
+			better = true
+		elseif rScore == bestR and size > bestSize + 0.05 then
+			better = true
+		elseif rScore == bestR and math.abs(size - bestSize) <= 0.05 and d < bestDist then
+			better = true
+		end
+		if better then
+			best, bestR, bestSize, bestDist, bestRarityName = egg, rScore, size, d, rName
+		end
+	end
+
 	for _, egg in ipairs(AreaEggs:GetChildren()) do
 		local rec = recs[egg.Name]
 		local pos = eggPos(egg)
-		if not pos then
-			-- skip
-		elseif eggInSelectedBiome(egg, rec) then
-			local d = (pos - hrp.Position).Magnitude
-			if not bestDist or d < bestDist then
-				best, bestDist = egg, d
-			end
-		elseif center and nearBiomeCenter(pos, biome) then
-			local d = (pos - center).Magnitude
-			if not fallbackDist or d < fallbackDist then
-				fallback, fallbackDist = egg, d
-			end
+		if pos and eggInSelectedBiome(egg, rec) then
+			consider(egg, rec, pos)
 		end
 	end
-	if best then return best, bestDist end
-	-- Last resort: any egg near hard-coded biome X corridor
-	if fallback then return fallback, fallbackDist end
+	if best then
+		return best, bestDist, bestRarityName
+	end
+
+	-- Fallback corridor — still rarest among corridor hits
 	if center then
 		for _, egg in ipairs(AreaEggs:GetChildren()) do
 			local pos = eggPos(egg)
-			if pos and math.abs(pos.X - center.X) < 280 then
-				local d = (pos - hrp.Position).Magnitude
-				if not bestDist or d < bestDist then
-					best, bestDist = egg, d
-				end
+			if pos and (nearBiomeCenter(pos, biome) or math.abs(pos.X - center.X) < 280) then
+				consider(egg, recs[egg.Name], pos)
 			end
 		end
 	end
-	return best, bestDist
+	return best, bestDist, bestRarityName
 end
 
 local function findPrompt(egg)
@@ -1257,7 +1346,7 @@ local function farmOnce()
 		end
 	end
 
-	local egg = nearestEggInBiome()
+	local egg, _, rarityName = nearestEggInBiome()
 	if not egg then
 		setStatus("No eggs " .. biome)
 		task.wait(0.5)
@@ -1266,7 +1355,7 @@ local function farmOnce()
 
 	local pos = eggPos(egg)
 	hrp = getHRP()
-	setStatus("Approach")
+	setStatus("Approach " .. tostring(rarityName or "egg"))
 	if not hrp or not pos or not stealAlong(buildStealPath(hrp.Position, pos), CFG.approachSpeed) then
 		setStatus("Approach abort")
 		return
@@ -2049,6 +2138,85 @@ function Api.stopFarm()
 	local hum = getHum()
 	if hum then hum.PlatformStand = false end
 	setStatus("Auto off")
+end
+
+-- Oxide HatchAllReadyEggs — separate from farm steal path
+local function hatchAllReadyEggs()
+	if not EggState then return 0 end
+	local readOwned = pick(EggState, "ReadOwnedEggs", "GetOwnedEggs", "ReadLocalEggs")
+	local isReady = pick(EggState, "IsReadyToHatch", "IsLocalEggReady")
+	local beginH = pick(EggState, "BeginHatch", "RequestHatchEgg")
+	local finishH = pick(EggState, "FinishHatch", "RequestCompleteHatchEgg")
+	if not (readOwned and beginH) then return 0 end
+
+	local ok, snapshot = pcall(function()
+		return readOwned(LP.UserId)
+	end)
+	if not ok or not snapshot then
+		ok, snapshot = pcall(readOwned)
+	end
+	if not ok or not snapshot then return 0 end
+
+	local count = 0
+	local records = snapshot.Records or snapshot
+	if typeof(records) ~= "table" then return 0 end
+	for uid, eggData in pairs(records) do
+		if typeof(eggData) == "table" then
+			local ready = true
+			if isReady then
+				local rok, rv = pcall(isReady, eggData)
+				ready = rok and rv == true
+			else
+				ready = eggData.Placement ~= nil
+			end
+			if ready then
+				local id = (typeof(uid) == "string" and uid) or eggData.Uid or eggData.uid
+				if typeof(id) == "string" then
+					pcall(function()
+						beginH(id)
+						task.wait(0.05)
+						if finishH then finishH(id) end
+						count = count + 1
+					end)
+				end
+			end
+		end
+	end
+	return count
+end
+
+local function ensureHatchLoop()
+	if hatchConn then return end
+	hatchConn = true
+	task.spawn(function()
+		while true do
+			if autoHatchOn then
+				bindGame()
+				if not isActuallyCarrying() then
+					local n = hatchAllReadyEggs()
+					if n > 0 and not autoFarm then
+						setStatus("Hatched " .. tostring(n))
+					elseif n > 0 then
+						-- don't stomp farm status mid-steal; silent hatch OK
+					end
+				end
+				task.wait(2.0)
+			else
+				task.wait(0.5)
+			end
+		end
+	end)
+end
+
+function Api.setAutoHatch(on)
+	autoHatchOn = on and true or false
+	if autoHatchOn then
+		bindGame()
+		ensureHatchLoop()
+		setStatus("Auto Hatch on | " .. GLITCH_CORE_VER)
+	else
+		setStatus("Auto Hatch off")
+	end
 end
 
 function Api.setEsp(on)
