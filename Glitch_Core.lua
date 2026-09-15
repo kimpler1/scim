@@ -1,10 +1,10 @@
 --[[
   Glitch Core — Steal An Egg
   Farm: Quest V18 lineage. ESP + Walk/Fly + Oxide Evidence scrub.
-  VER: V22  Manual WS/Fly deliver assist: guard-hit regrab + PlantEgg (fixes Delivery failed)
+  VER: V23  Autofarm isolated from manual WS/Fly deliver assist (no farm path changes)
 ]]
 
-local GLITCH_CORE_VER = "V22"
+local GLITCH_CORE_VER = "V23"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -1033,6 +1033,12 @@ end
 
 -- Manual WS/Fly: Oxide delivery fix without Auto Farm
 -- On pickup → pause move → guard-hit regrab → then PlantEgg spam in plot
+local function cancelManualDeliverAssist()
+	freezeMoveForValidate = false
+	deliverAssistBusy = false
+	stealValidated = false
+end
+
 local function cheatMoveActive()
 	return (walkSpeedOn or flyOn) and not autoFarm
 end
@@ -1043,24 +1049,33 @@ local function runManualStealValidate()
 	deliverAssistBusy = true
 	freezeMoveForValidate = true
 	task.spawn(function()
+		if autoFarm then
+			cancelManualDeliverAssist()
+			return
+		end
 		bindGame()
 		patchRigSyncKnockback()
 		local egg = findEggByUid(lastEggUid) or findNearestFieldEgg(50) or findReclaimEgg()
-		if egg then
+		if egg and not autoFarm then
 			lastEggUid = egg.Name
 			local pos = eggPos(egg)
 			if pos then lastEggPos = pos end
 			setStatus("Validate steal (guard-hit)")
 			local ok = guardHitThenRegrab(egg, function()
-				return cheatMoveActive() or isActuallyCarrying()
+				-- Stop the moment Auto Farm takes over — never fight farmOnce
+				return (not autoFarm) and (cheatMoveActive() or isActuallyCarrying())
 			end)
+			if autoFarm then
+				cancelManualDeliverAssist()
+				return
+			end
 			stealValidated = ok and isActuallyCarrying()
 			if stealValidated then
 				setStatus("Steal OK — run to base")
 			else
 				setStatus("Validate weak — PlantEgg on base")
 			end
-		else
+		elseif not autoFarm then
 			stealValidated = isActuallyCarrying()
 			setStatus("No nest egg — PlantEgg on base")
 		end
@@ -1072,7 +1087,11 @@ end
 local function ensureDeliverAssist()
 	if deliverAssistConn then return end
 	deliverAssistConn = RunService.Heartbeat:Connect(function()
+		-- Autofarm owns carry/plant entirely — assist must not touch flags or PlantEgg
 		if autoFarm then
+			if freezeMoveForValidate or deliverAssistBusy then
+				cancelManualDeliverAssist()
+			end
 			wasCarryingEdge = isActuallyCarrying()
 			return
 		end
@@ -1083,7 +1102,6 @@ local function ensureDeliverAssist()
 
 		local carryingNow = isActuallyCarrying()
 		if carryingNow and not wasCarryingEdge then
-			-- Fresh pickup while WS/Fly — must validate or base returns egg to nest
 			stealValidated = false
 			carrying = true
 			runManualStealValidate()
@@ -1739,11 +1757,14 @@ local function ensureMoveLoop()
 	if moveConn then return end
 	moveConn = RunService.RenderStepped:Connect(function(dt)
 		if not walkSpeedOn then return end
+		-- Never CFrame-boost while Auto Farm drives stealMoveTo
+		if autoFarm then
+			return
+		end
 		applyWalkSpeed()
 		if freezeMoveForValidate then return end
 		local hum = getHum()
 		local hrp = getHRP()
-		-- Extra: if game clamps WS, boost along MoveDirection (still scrubbed)
 		if hum and hrp and not flyOn and hum.MoveDirection.Magnitude > 0.05 then
 			local boost = math.max(0, walkSpeedVal - math.max(hum.WalkSpeed, 16))
 			if boost > 1 then
@@ -1892,6 +1913,7 @@ function Api.startFarm()
 	bindGame()
 	patchRigSyncKnockback()
 	swapStealHumanoid()
+	cancelManualDeliverAssist()
 	if flyOn then stopFly() end
 	setStatus(("Glitch %s Bound E=%s P=%s Eggs=%s KB=%s"):format(
 		GLITCH_CORE_VER,
@@ -1906,6 +1928,7 @@ end
 
 function Api.stopFarm()
 	autoFarm = false
+	cancelManualDeliverAssist()
 	local hum = getHum()
 	if hum then hum.PlatformStand = false end
 	setStatus("Auto off")
@@ -1953,8 +1976,7 @@ function Api.destroy()
 	autoFarm = false
 	stopFly()
 	walkSpeedOn = false
-	freezeMoveForValidate = false
-	deliverAssistBusy = false
+	cancelManualDeliverAssist()
 	espFlags.players, espFlags.eggs, espFlags.beasts = false, false, false
 	clearEsp()
 	for _, c in ipairs(connections) do
