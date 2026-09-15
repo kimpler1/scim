@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player | General
-  VER: V27
+  VER: V28
 ]]
 
-local GLITCH_UI_VER = "V27"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v27"
+local GLITCH_UI_VER = "V28"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v28"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -82,80 +82,80 @@ local LANG_LABEL = {
 local I18N = {
 	en = {
 		features = "Features", main = "Main", esp = "ESP", player = "Player", general = "General",
-		autofarm = "Autofarm", auto_steal = "Auto Steal Egg", auto_hatch = "Auto Hatch Ready Eggs",
+		autofarm = "Autofarm", auto_steal = "Auto Steal Egg", steal_rarest = "Steal Rarest Egg",
 		zone = "Zone", approach_escape = "Approach  ·  Escape", approach = "Approach", escape = "Escape",
 		prev = "< Prev", next = "Next >", world_esp = "World ESP", players = "Players", eggs = "Eggs",
 		beasts = "Beasts / Night",
 		esp_hint = "Beasts: MonsterParasite + zone guards + night/boss models.",
 		movement = "Movement", walk_speed = "Walk Speed", walk_value = "Walk Speed value",
 		fly = "Fly (WASD + Space/Ctrl)", fly_speed = "Fly Speed",
-		fly_hint = "V27: Auto Steal = nearest egg (restored). Auto Hatch kept. WS/Fly frozen.",
+		fly_hint = "V28: Autofarm = V25 nearest. Optional Steal Rarest Egg. No Auto Hatch.",
 		language = "Language", lang_hint = "UI language only. Biome names stay in-game.",
 		subtitle = "glass ui  ·  quest farm  ·  %s",
 		status_boot = "Glitch %s\nmount=%s\nload core → version in status",
 	},
 	ru = {
 		features = "Функции", main = "Основное", esp = "ESP", player = "Игрок", general = "Общее",
-		autofarm = "Автофарм", auto_steal = "Авто кража яиц", auto_hatch = "Авто хэтч готовых",
+		autofarm = "Автофарм", auto_steal = "Авто кража яиц", steal_rarest = "Украсть самое редкое яйцо",
 		zone = "Зона", approach_escape = "Подход  ·  Уход", approach = "Подход", escape = "Уход",
 		prev = "< Назад", next = "Далее >", world_esp = "Мир ESP", players = "Игроки", eggs = "Яйца",
 		beasts = "Монстры / Ночь",
 		esp_hint = "Монстры: паразит + гарды + ночь/боссы.",
 		movement = "Движение", walk_speed = "Скорость ходьбы", walk_value = "Значение скорости",
 		fly = "Полёт (WASD + Space/Ctrl)", fly_speed = "Скорость полёта",
-		fly_hint = "V27: автокража = ближайшее яйцо. Хэтч сохранён. WS/Fly заморожены.",
+		fly_hint = "V28: автофарм = V25 ближайшее. Опция: самое редкое. Без автохэтча.",
 		language = "Язык", lang_hint = "Только язык интерфейса. Биомы как в игре.",
 		subtitle = "glass ui  ·  quest farm  ·  %s",
 		status_boot = "Glitch %s\nmount=%s\nзагрузка core → версия в статусе",
 	},
 	zh = {
 		features = "功能", main = "主页", esp = "ESP", player = "玩家", general = "通用",
-		autofarm = "自动挂机", auto_steal = "自动偷蛋", auto_hatch = "自动孵化就绪蛋",
+		autofarm = "自动挂机", auto_steal = "自动偷蛋", steal_rarest = "偷最稀有的蛋",
 		zone = "区域", approach_escape = "接近  ·  撤离", approach = "接近", escape = "撤离",
 		prev = "< 上一个", next = "下一个 >", world_esp = "世界 ESP", players = "玩家", eggs = "蛋",
 		beasts = "野兽 / 夜晚", esp_hint = "野兽：寄生虫 + 守卫 + 夜晚/Boss。",
 		movement = "移动", walk_speed = "步行速度", walk_value = "速度数值",
 		fly = "飞行 (WASD + Space/Ctrl)", fly_speed = "飞行速度",
-		fly_hint = "V27：自动偷取=最近的蛋。保留孵化。WS/Fly已冻结。",
+		fly_hint = "V28：自动=最近的蛋(V25)。可选最稀有。无自动孵化。",
 		language = "语言", lang_hint = "仅界面语言。生物群系名保持游戏原文。",
 		subtitle = "glass ui  ·  quest farm  ·  %s",
 		status_boot = "Glitch %s\nmount=%s\n加载 core → 状态栏版本",
 	},
 	de = {
 		features = "Funktionen", main = "Haupt", esp = "ESP", player = "Spieler", general = "Allgemein",
-		autofarm = "Autofarm", auto_steal = "Auto Eier stehlen", auto_hatch = "Auto Schlüpfen (bereit)",
+		autofarm = "Autofarm", auto_steal = "Auto Eier stehlen", steal_rarest = "Seltenstes Ei stehlen",
 		zone = "Zone", approach_escape = "Anflug  ·  Flucht", approach = "Anflug", escape = "Flucht",
 		prev = "< Zurück", next = "Weiter >", world_esp = "Welt ESP", players = "Spieler", eggs = "Eier",
 		beasts = "Bestien / Nacht", esp_hint = "Bestien: Parasit + Wachen + Nacht/Bosse.",
 		movement = "Bewegung", walk_speed = "Laufgeschwindigkeit", walk_value = "Geschwindigkeitswert",
 		fly = "Flug (WASD + Space/Ctrl)", fly_speed = "Fluggeschwindigkeit",
-		fly_hint = "V27: Auto Steal = nächstes Ei. Hatch bleibt. WS/Fly eingefroren.",
+		fly_hint = "V28: Autofarm = V25 nächstes Ei. Optional seltenstes. Kein Auto-Hatch.",
 		language = "Sprache", lang_hint = "Nur UI-Sprache. Biom-Namen wie im Spiel.",
 		subtitle = "glass ui  ·  quest farm  ·  %s",
 		status_boot = "Glitch %s\nmount=%s\nCore laden → Version im Status",
 	},
 	fr = {
 		features = "Fonctions", main = "Principal", esp = "ESP", player = "Joueur", general = "Général",
-		autofarm = "Autofarm", auto_steal = "Vol auto d'œufs", auto_hatch = "Éclosion auto (prêts)",
+		autofarm = "Autofarm", auto_steal = "Vol auto d'œufs", steal_rarest = "Voler l'œuf le plus rare",
 		zone = "Zone", approach_escape = "Approche  ·  Fuite", approach = "Approche", escape = "Fuite",
 		prev = "< Préc.", next = "Suiv. >", world_esp = "Monde ESP", players = "Joueurs", eggs = "Œufs",
 		beasts = "Bêtes / Nuit", esp_hint = "Bêtes : parasite + gardes + nuit/boss.",
 		movement = "Mouvement", walk_speed = "Vitesse de marche", walk_value = "Valeur de vitesse",
 		fly = "Vol (WASD + Space/Ctrl)", fly_speed = "Vitesse de vol",
-		fly_hint = "V27 : vol auto = œuf le plus proche. Hatch conservé. WS/Fly figés.",
+		fly_hint = "V28 : autofarm = œuf le plus proche (V25). Option plus rare. Pas d'éclosion auto.",
 		language = "Langue", lang_hint = "Langue UI uniquement. Biomes inchangés.",
 		subtitle = "glass ui  ·  quest farm  ·  %s",
 		status_boot = "Glitch %s\nmount=%s\ncharger core → version dans le statut",
 	},
 	es = {
 		features = "Funciones", main = "Principal", esp = "ESP", player = "Jugador", general = "General",
-		autofarm = "Autofarm", auto_steal = "Robo auto de huevos", auto_hatch = "Eclosión auto (listos)",
+		autofarm = "Autofarm", auto_steal = "Robo auto de huevos", steal_rarest = "Robar el huevo más raro",
 		zone = "Zona", approach_escape = "Acercar  ·  Escapar", approach = "Acercar", escape = "Escapar",
 		prev = "< Ant.", next = "Sig. >", world_esp = "Mundo ESP", players = "Jugadores", eggs = "Huevos",
 		beasts = "Bestias / Noche", esp_hint = "Bestias: parásito + guardias + noche/jefes.",
 		movement = "Movimiento", walk_speed = "Velocidad al caminar", walk_value = "Valor de velocidad",
 		fly = "Vuelo (WASD + Space/Ctrl)", fly_speed = "Velocidad de vuelo",
-		fly_hint = "V27: auto robo = huevo más cercano. Hatch se mantiene. WS/Fly congelados.",
+		fly_hint = "V28: autofarm = huevo más cercano (V25). Opción más raro. Sin hatch auto.",
 		language = "Idioma", lang_hint = "Solo idioma de la UI. Biomas como en el juego.",
 		subtitle = "glass ui  ·  quest farm  ·  %s",
 		status_boot = "Glitch %s\nmount=%s\ncargar core → versión en el estado",
@@ -207,6 +207,7 @@ local function pushConfig()
 			biomes = BIOMES,
 			approachSpeed = approachSpeed,
 			escapeSpeed = escapeSpeed,
+			stealRarest = rarestToggle and rarestToggle.get() or false,
 			status = setStatus,
 		})
 	end
@@ -705,17 +706,17 @@ farmToggle = makeToggle(mainPage, "Auto Steal Egg", false, function(on)
 	end
 end)
 
-local hatchToggle
-hatchToggle = makeToggle(mainPage, "Auto Hatch Ready Eggs", false, function(on)
+local rarestToggle
+rarestToggle = makeToggle(mainPage, "Steal Rarest Egg", false, function(on)
 	if not loadCore() then
-		hatchToggle.set(false)
+		rarestToggle.set(false)
 		return
 	end
-	if coreApi.setAutoHatch then
-		coreApi.setAutoHatch(on)
-	else
-		setStatus("Core missing setAutoHatch — re-fetch")
-		hatchToggle.set(false)
+	pushConfig()
+	if coreApi.setStealRarest then
+		coreApi.setStealRarest(on)
+	elseif coreApi.setConfig then
+		coreApi.setConfig({ stealRarest = on })
 	end
 end)
 
@@ -909,7 +910,7 @@ local function applyLang(code)
 	if navBtns.General then navBtns.General.setText(tr("general")) end
 	secFarm.Text = string.upper(tr("autofarm"))
 	farmToggle.setLabel(tr("auto_steal"))
-	hatchToggle.setLabel(tr("auto_hatch"))
+	rarestToggle.setLabel(tr("steal_rarest"))
 	setBiomeLabel()
 	prevB.Text = tr("prev")
 	nextB.Text = tr("next")
