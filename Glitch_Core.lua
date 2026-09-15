@@ -1,10 +1,10 @@
 --[[
   Glitch Core — Steal An Egg
   Farm: Quest Version (v18). ESP + Walk/Fly with Oxide-style client AC scrub.
-  VER: 0.4.0-ac
+  VER: 0.4.1-ac  Fly = Oxide Anchored+BodyGyro (was Boblo PlatformStand → rubberband)
 ]]
 
-local GLITCH_CORE_VER = "0.4.0-ac"
+local GLITCH_CORE_VER = "0.4.1-ac"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -63,6 +63,7 @@ local espFolder, espConn
 local walkSpeedOn, walkSpeedVal = false, 32
 local flyOn, flySpeed = false, 60
 local moveConn
+local flyConn, flyGyro = nil, nil
 local acInstalled = false
 local acStatus = "off"
 
@@ -1620,53 +1621,20 @@ local function applyWalkSpeed()
 	hum.WalkSpeed = walkSpeedVal
 end
 
--- Boblo CFrame fly + WalkSpeed; AC scrub must be running
+-- WalkSpeed loop only (fly is separate — Oxide Anchored path)
 local function ensureMoveLoop()
 	if moveConn then return end
 	moveConn = RunService.RenderStepped:Connect(function(dt)
-		if walkSpeedOn then
-			applyWalkSpeed()
-			local hum = getHum()
-			local hrp = getHRP()
-			-- Extra: if game clamps WS, boost along MoveDirection (still scrubbed)
-			if hum and hrp and hum.MoveDirection.Magnitude > 0.05 then
-				local boost = math.max(0, walkSpeedVal - math.max(hum.WalkSpeed, 16))
-				if boost > 1 then
-					hrp.CFrame = hrp.CFrame + hum.MoveDirection * boost * math.min(dt, 0.05)
-				end
+		if not walkSpeedOn then return end
+		applyWalkSpeed()
+		local hum = getHum()
+		local hrp = getHRP()
+		-- Extra: if game clamps WS, boost along MoveDirection (still scrubbed)
+		if hum and hrp and not flyOn and hum.MoveDirection.Magnitude > 0.05 then
+			local boost = math.max(0, walkSpeedVal - math.max(hum.WalkSpeed, 16))
+			if boost > 1 then
+				hrp.CFrame = hrp.CFrame + hum.MoveDirection * boost * math.min(dt, 0.05)
 			end
-		end
-		if not flyOn or autoFarm then return end
-		local root = getHRP()
-		local humanoid = getHum()
-		local cam = Workspace.CurrentCamera
-		if not (root and humanoid and cam) then return end
-		humanoid.PlatformStand = true
-		local direction = Vector3.zero
-		if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-			direction = direction + cam.CFrame.LookVector
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-			direction = direction - cam.CFrame.LookVector
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-			direction = direction - cam.CFrame.RightVector
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-			direction = direction + cam.CFrame.RightVector
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-			direction = direction + Vector3.new(0, 1, 0)
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
-			or UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-			direction = direction - Vector3.new(0, 1, 0)
-		end
-		root.AssemblyLinearVelocity = Vector3.zero
-		root.AssemblyAngularVelocity = Vector3.zero
-		if direction.Magnitude > 0.05 then
-			local step = flySpeed * math.min(dt, 0.05)
-			root.CFrame = root.CFrame + direction.Unit * step
 		end
 	end)
 	table.insert(connections, moveConn)
@@ -1688,18 +1656,37 @@ local function setWalkSpeedEnabled(on)
 	end
 end
 
+-- Oxide Smooth Fly: Anchored HRP + BodyGyro + flat WASD (no PlatformStand rubberband)
 local function stopFly()
 	flyOn = false
+	if flyConn then
+		pcall(function() flyConn:Disconnect() end)
+		flyConn = nil
+	end
+	if flyGyro then
+		pcall(function() flyGyro:Destroy() end)
+		flyGyro = nil
+	end
+	local hrp = getHRP()
+	if hrp then
+		pcall(function() hrp.Anchored = false end)
+		for _, c in ipairs(hrp:GetChildren()) do
+			if c:IsA("BodyGyro") and c.Name == "GlitchFlyGyro" then
+				pcall(function() c:Destroy() end)
+			end
+		end
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+	end
 	local hum = getHum()
 	if hum then
 		hum.PlatformStand = false
 		pcall(function()
+			hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+		end)
+		pcall(function()
 			hum:ChangeState(Enum.HumanoidStateType.Running)
 		end)
-	end
-	local hrp = getHRP()
-	if hrp then
-		hrp.AssemblyLinearVelocity = Vector3.zero
 	end
 end
 
@@ -1708,14 +1695,63 @@ local function startFly()
 		setStatus("Fly paused (Auto on)")
 		return
 	end
-	local ac = installClientAc()
-	flyOn = true
-	ensureMoveLoop()
-	hardenCharacterSignals()
+	stopFly() -- clean previous gyro/anchor
+	local hrp = getHRP()
 	local hum = getHum()
-	if hum then
-		hum.PlatformStand = true
+	if not (hrp and hum) then
+		setStatus("Fly: no character")
+		return
 	end
+	local ac = installClientAc()
+	hardenCharacterSignals()
+	flyOn = true
+	hrp.Anchored = true
+	hum.PlatformStand = false
+
+	local bodyGyro = Instance.new("BodyGyro")
+	bodyGyro.Name = "GlitchFlyGyro"
+	bodyGyro.MaxTorque = Vector3.new(1, 1, 1) * 1e5
+	bodyGyro.P = 1e5
+	bodyGyro.CFrame = hrp.CFrame
+	bodyGyro.Parent = hrp
+	flyGyro = bodyGyro
+
+	flyConn = RunService.RenderStepped:Connect(function(dt)
+		if not flyOn or autoFarm then return end
+		local root = getHRP()
+		local cam = Workspace.CurrentCamera
+		if not (root and cam) then return end
+		if not root.Anchored then
+			root.Anchored = true
+		end
+
+		local look = cam.CFrame.LookVector
+		local right = cam.CFrame.RightVector
+		local flatLook = Vector3.new(look.X, 0, look.Z)
+		flatLook = flatLook.Magnitude > 0.001 and flatLook.Unit or Vector3.new(0, 0, -1)
+		local flatRight = Vector3.new(right.X, 0, right.Z)
+		flatRight = flatRight.Magnitude > 0.001 and flatRight.Unit or Vector3.new(1, 0, 0)
+
+		local dir = Vector3.zero
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + flatLook end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - flatLook end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - flatRight end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + flatRight end
+		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0, 1, 0) end
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+			or UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+			dir = dir - Vector3.new(0, 1, 0)
+		end
+
+		if dir.Magnitude > 0.05 then
+			-- Oxide: min(dt, 0.1) — was 0.05 + PlatformStand = slow + rubberband
+			root.CFrame = root.CFrame + dir.Unit * flySpeed * math.min(dt, 0.1)
+		end
+		if flyGyro and flyGyro.Parent then
+			flyGyro.CFrame = CFrame.lookAt(root.Position, root.Position + look)
+		end
+	end)
+	table.insert(connections, flyConn)
 	setStatus(("Fly on %d | AC %s | %s"):format(flySpeed, tostring(ac), GLITCH_CORE_VER))
 end
 
@@ -1786,7 +1822,7 @@ end
 
 function Api.setFly(on, speed)
 	if typeof(speed) == "number" then
-		flySpeed = math.clamp(speed, 10, 400)
+		flySpeed = math.clamp(speed, 10, 300)
 	end
 	if on then
 		startFly()
@@ -1805,7 +1841,8 @@ function Api.destroy()
 		pcall(function() c:Disconnect() end)
 	end
 	connections = {}
-	espConn, moveConn = nil, nil
+	espConn, moveConn, flyConn = nil, nil, nil
+	flyGyro = nil
 end
 
 LP.CharacterAdded:Connect(function()
@@ -1821,9 +1858,9 @@ LP.CharacterAdded:Connect(function()
 	if walkSpeedOn then
 		applyWalkSpeed()
 	end
+	-- Re-bind Oxide fly on new character (Anchored + new gyro)
 	if flyOn and not autoFarm then
-		local hum = getHum()
-		if hum then hum.PlatformStand = true end
+		startFly()
 	end
 end)
 

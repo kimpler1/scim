@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: 0.4.0-ac  (bump when shipping; remove at release if asked)
+  VER: 0.4.1-ac  (bump when shipping; remove at release if asked)
 ]]
 
-local GLITCH_UI_VER = "0.4.0-ac"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=g3"
+local GLITCH_UI_VER = "0.4.1-ac"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=g41"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -733,7 +733,7 @@ flyToggle = makeToggle(playerPage, "Fly (WASD + Space/Ctrl)", false, function(on
 	end
 	if coreApi.setFly then coreApi.setFly(on, flySpeedVal) end
 end)
-makeSlider(playerPage, "Fly Speed", 10, 200, flySpeedVal, function(v)
+makeSlider(playerPage, "Fly Speed", 20, 250, flySpeedVal, function(v)
 	flySpeedVal = v
 	if flyToggle.get() and coreApi and coreApi.setFly then
 		coreApi.setFly(true, flySpeedVal)
@@ -751,7 +751,7 @@ fh.TextColor3 = MUTED
 fh.TextWrapped = true
 fh.TextXAlignment = Enum.TextXAlignment.Left
 fh.TextYAlignment = Enum.TextYAlignment.Top
-fh.Text = "AC scrub (Oxide Evidence) + Boblo fly. Status shows AC layers. Start fly ~60."
+fh.Text = "Oxide Anchored fly (WASD flat + Space/Shift). Max 250. Status = AC layers."
 fh.Parent = flyHint
 
 -- default page
