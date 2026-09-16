@@ -2,14 +2,15 @@
   Glitch Core — Steal An Egg
   Farm: Best Version V18 autofarm (exact guard-hit / regrab / peel).
   ESP + Walk/Fly + Oxide Evidence scrub.
-  VER: V27
+  VER: V28
   FROZEN (LO 2026-09-16):
     - Autofarm = Best Version V18 path (guardHitThenRegrab / peelThenEscape / farmOnce)
     - Target: nearestEggInBiome (do not switch to rarest)
     - WS + Fly: scrub @0.2s cached, unanchored velocity fly, WS loop
+  V28: hard unload snaps to ground + clears farm/WS/Fly/ESP (no float after close).
 ]]
 
-local GLITCH_CORE_VER = "V27"
+local GLITCH_CORE_VER = "V28"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -408,6 +409,30 @@ local function groundedY(x, z, fallbackY)
 		return math.clamp(fallbackY, laneY - 2, laneY + 5)
 	end
 	return laneY + 3
+end
+
+-- Autofarm escape uses elevated Y — stop/close must drop you or you float.
+local function snapToGround()
+	local hrp = getHRP()
+	local hum = getHum()
+	if not hrp then return end
+	recoverStand()
+	pcall(function() hrp.Anchored = false end)
+	local pos = hrp.Position
+	local gy = groundedY(pos.X, pos.Z, pos.Y)
+	hrp.CFrame = CFrame.new(pos.X, gy, pos.Z)
+	hrp.AssemblyLinearVelocity = Vector3.zero
+	hrp.AssemblyAngularVelocity = Vector3.zero
+	if hum then
+		hum.PlatformStand = false
+		hum.Sit = false
+		if not walkSpeedOn then
+			pcall(function() hum.WalkSpeed = 16 end)
+		end
+		pcall(function()
+			hum:ChangeState(Enum.HumanoidStateType.Running)
+		end)
+	end
 end
 
 local function anchor(hrp, cf)
@@ -2004,6 +2029,7 @@ function Api.stopFarm()
 	cancelManualDeliverAssist()
 	local hum = getHum()
 	if hum then hum.PlatformStand = false end
+	snapToGround()
 	setStatus("Auto off")
 end
 
@@ -2052,21 +2078,6 @@ function Api.destroy()
 	carrying = false
 	stopFly()
 	walkSpeedOn = false
-	local hum = getHum()
-	if hum then
-		pcall(function()
-			hum.WalkSpeed = 16
-			hum.PlatformStand = false
-		end)
-	end
-	local hrp = getHRP()
-	if hrp then
-		pcall(function()
-			hrp.Anchored = false
-			hrp.AssemblyLinearVelocity = Vector3.zero
-			hrp.AssemblyAngularVelocity = Vector3.zero
-		end)
-	end
 	cancelManualDeliverAssist()
 	espFlags.players, espFlags.eggs, espFlags.beasts = false, false, false
 	clearEsp()
@@ -2082,8 +2093,32 @@ function Api.destroy()
 	integrityState = nil
 	lastEggUid, lastEggPos = nil, nil
 	lastStealAt = 0
+	-- Drop elevated farm pose + restore default walk
+	snapToGround()
+	local hum = getHum()
+	if hum then
+		pcall(function()
+			hum.WalkSpeed = 16
+			hum.PlatformStand = false
+			hum.Sit = false
+		end)
+	end
+	local hrp = getHRP()
+	if hrp then
+		pcall(function()
+			hrp.Anchored = false
+			hrp.AssemblyLinearVelocity = Vector3.zero
+			hrp.AssemblyAngularVelocity = Vector3.zero
+		end)
+	end
+	-- Kill ESP folder if still around
+	pcall(function()
+		if espFolder and espFolder.Parent then
+			espFolder:Destroy()
+		end
+	end)
+	espFolder = nil
 	CFG.status = function() end
-	setStatus("Destroyed")
 end
 
 charAddedConn = LP.CharacterAdded:Connect(function()
