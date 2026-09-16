@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V54
+  VER: V55
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V54"
+local GLITCH_CORE_VER = "V55"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -814,13 +814,26 @@ local function isDescendantOf(child, ancestor)
 	return child == ancestor or child:IsDescendantOf(ancestor)
 end
 
+local function promptPart(prompt)
+	local parent = prompt and prompt.Parent
+	while parent and parent ~= Workspace do
+		if parent:IsA("BasePart") then return parent end
+		parent = parent.Parent
+	end
+end
+
 local function visibleDroppedCandidates(knownUids)
 	-- A normal nest egg lives in AreaEggSlotsClient.  The snapshot can briefly
 	-- label that slot as Dropped, so never use it for global recovery.  Match the
 	-- real world pickup prompt plus its UID outside the slot folder instead.
-	local found = {}
+	local found, anonymous = {}, {}
 	for _, prompt in ipairs(Workspace:GetDescendants()) do
-		if prompt:IsA("ProximityPrompt") and prompt.Name == "CarryAreaEgg" and prompt.Enabled then
+		local action = prompt:IsA("ProximityPrompt") and string.lower(tostring(prompt.ActionText or "")) or ""
+		local pickupLike = prompt.Name == "CarryAreaEgg"
+			or action:find("carry", 1, true) ~= nil
+			or action:find("pick", 1, true) ~= nil
+			or action:find("grab", 1, true) ~= nil
+		if prompt:IsA("ProximityPrompt") and prompt.Enabled and pickupLike and not isDescendantOf(prompt, AreaEggs) then
 			local node, holder, uid = prompt, nil, nil
 			while node and node ~= Workspace do
 				local id = node:GetAttribute("Uid") or node:GetAttribute("EggUid")
@@ -833,20 +846,17 @@ local function visibleDroppedCandidates(knownUids)
 				end
 				node = node.Parent
 			end
-			if uid and not isDescendantOf(holder, AreaEggs) then
-				local part = holder:IsA("BasePart") and holder or holder:FindFirstChildWhichIsA("BasePart", true)
-				local parent = prompt.Parent
-				while not part and parent and parent ~= Workspace do
-					if parent:IsA("BasePart") then part = parent break end
-					parent = parent.Parent
-				end
-				if part then
+			local part = (holder and (holder:IsA("BasePart") and holder or holder:FindFirstChildWhichIsA("BasePart", true))) or promptPart(prompt)
+			if part then
+				if uid then
 					found[uid] = { Name = uid, Position = part.Position, Prompt = prompt }
+				else
+					table.insert(anonymous, { Name = "", Position = part.Position, Prompt = prompt })
 				end
 			end
 		end
 	end
-	return found
+	return found, anonymous
 end
 
 -- Recovery mode requires both a Dropped record and a visible, out-of-nest
@@ -857,7 +867,7 @@ local function findDroppedEggGlobal()
 	local hrp = getHRP()
 	if not hrp then return nil end
 	local recs = recordsByUid()
-	local visible = visibleDroppedCandidates(recs)
+	local visible, anonymous = visibleDroppedCandidates(recs)
 	local best, bestScore, bestZone
 	for uid, rec in pairs(recs) do
 		if rec.State == "Dropped" then
@@ -874,6 +884,25 @@ local function findDroppedEggGlobal()
 			end
 			local eggScore = bestEggScore(rec, (candidate.Position - hrp.Position).Magnitude)
 			local score = zoneIndex * 1000000000000 + eggScore
+			if not bestScore or score > bestScore then
+				best, bestScore, bestZone = candidate, score, zoneIndex
+			end
+		end
+	end
+	-- Some dropped objects are intentionally client-only and have no exposed UID.
+	-- They are still safe to collect because their own pickup prompt is outside
+	-- the nest-slot folder.  Use position to keep the end-of-map-first rule.
+	if not best then
+		for _, candidate in ipairs(anonymous) do
+			local zoneIndex = 0
+			for i = #CFG.biomes, 1, -1 do
+				local boundsInside = isInsideBiomeBounds(candidate.Position, CFG.biomes[i])
+				if boundsInside == true or nearBiomeCenter(candidate.Position, CFG.biomes[i]) then
+					zoneIndex = i
+					break
+				end
+			end
+			local score = zoneIndex * 1000000000000 - (candidate.Position - hrp.Position).Magnitude
 			if not bestScore or score > bestScore then
 				best, bestScore, bestZone = candidate, score, zoneIndex
 			end
@@ -948,7 +977,9 @@ local function tryCarryEgg(egg)
 	if rec and IsFirstUid and IsFirstUid(uid) and BuildSlotKey then
 		pcall(function() slotKey = BuildSlotKey(rec.AreaId, rec.NestId) end)
 	end
-	pcall(function() CarryFn(uid, slotKey) end)
+	if typeof(uid) == "string" and uid ~= "" then
+		pcall(function() CarryFn(uid, slotKey) end)
+	end
 	task.wait()
 	if isActuallyCarrying() then
 		carrying = true
