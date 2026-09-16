@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V53
+  VER: V54
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V53"
+local GLITCH_CORE_VER = "V54"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -809,17 +809,62 @@ local function selectFarmEgg()
 	return nearestEggInBiome()
 end
 
--- Recovery mode deliberately considers only server records marked Dropped.
--- Higher zone index wins first; rarity/mutation/size choose between drops in
--- the same zone, then distance breaks a remaining tie.
+local function isDescendantOf(child, ancestor)
+	if not (child and ancestor) then return false end
+	return child == ancestor or child:IsDescendantOf(ancestor)
+end
+
+local function visibleDroppedCandidates(knownUids)
+	-- A normal nest egg lives in AreaEggSlotsClient.  The snapshot can briefly
+	-- label that slot as Dropped, so never use it for global recovery.  Match the
+	-- real world pickup prompt plus its UID outside the slot folder instead.
+	local found = {}
+	for _, prompt in ipairs(Workspace:GetDescendants()) do
+		if prompt:IsA("ProximityPrompt") and prompt.Name == "CarryAreaEgg" and prompt.Enabled then
+			local node, holder, uid = prompt, nil, nil
+			while node and node ~= Workspace do
+				local id = node:GetAttribute("Uid") or node:GetAttribute("EggUid")
+				if typeof(id) ~= "string" and knownUids and knownUids[node.Name] then
+					id = node.Name
+				end
+				if typeof(id) == "string" then
+					holder, uid = node, id
+					break
+				end
+				node = node.Parent
+			end
+			if uid and not isDescendantOf(holder, AreaEggs) then
+				local part = holder:IsA("BasePart") and holder or holder:FindFirstChildWhichIsA("BasePart", true)
+				local parent = prompt.Parent
+				while not part and parent and parent ~= Workspace do
+					if parent:IsA("BasePart") then part = parent break end
+					parent = parent.Parent
+				end
+				if part then
+					found[uid] = { Name = uid, Position = part.Position, Prompt = prompt }
+				end
+			end
+		end
+	end
+	return found
+end
+
+-- Recovery mode requires both a Dropped record and a visible, out-of-nest
+-- pickup object. Higher zone index wins first; rarity/mutation/size choose
+-- between drops in the same zone, then distance breaks a remaining tie.
 local function findDroppedEggGlobal()
 	AreaEggs = ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 3)
 	local hrp = getHRP()
 	if not hrp then return nil end
+	local recs = recordsByUid()
+	local visible = visibleDroppedCandidates(recs)
 	local best, bestScore, bestZone
-	for uid, rec in pairs(recordsByUid()) do
-		local cf = rec.BoundsCFrame or rec.BottomCFrame
-		if rec.State == "Dropped" and typeof(cf) == "CFrame" then
+	for uid, rec in pairs(recs) do
+		if rec.State == "Dropped" then
+			local candidate = visible[uid]
+			if not candidate then
+				continue
+			end
 			local zoneIndex = 0
 			for i, biomeName in ipairs(CFG.biomes) do
 				if matchesBiome(rec.AreaId, biomeName) then
@@ -827,9 +872,7 @@ local function findDroppedEggGlobal()
 					break
 				end
 			end
-			local live = AreaEggs and AreaEggs:FindFirstChild(uid)
-			local candidate = live or { Name = uid, Position = cf.Position, Record = rec }
-			local eggScore = bestEggScore(rec, (cf.Position - hrp.Position).Magnitude)
+			local eggScore = bestEggScore(rec, (candidate.Position - hrp.Position).Magnitude)
 			local score = zoneIndex * 1000000000000 + eggScore
 			if not bestScore or score > bestScore then
 				best, bestScore, bestZone = candidate, score, zoneIndex
@@ -838,6 +881,8 @@ local function findDroppedEggGlobal()
 	end
 	if best then
 		setStatus(("Dropped %d/%d -> reclaim"):format(bestZone, #CFG.biomes))
+	else
+		setStatus("No visible dropped eggs")
 	end
 	return best
 end
@@ -849,6 +894,9 @@ local function findPrompt(egg)
 				return d
 			end
 		end
+	end
+	if typeof(egg) == "table" and egg.Prompt and egg.Prompt:IsA("ProximityPrompt") and egg.Prompt.Enabled then
+		return egg.Prompt
 	end
 	-- Oxide: CarryAreaEgg near player
 	local hrp = getHRP()
