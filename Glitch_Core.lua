@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V48
+  VER: V49
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V48"
+local GLITCH_CORE_VER = "V49"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -46,7 +46,7 @@ local CFG = {
 	grabDelay = 1.6,
 	moveTimeout = 14,
 	baseWait = 3.0,
-	escapeHeight = 5,
+	escapeHeight = 10,
 	carryGrace = 0.25,
 	reclaimRadius = 250,
 	biomeRadiusX = 220,
@@ -1161,6 +1161,10 @@ local function peelThenEscape()
 	local hrp = getHRP()
 	if not hrp then return false end
 	setStatus("Peel")
+	-- Lift before the first horizontal step: Titan's follow-up attack is ground
+	-- based, and waiting for the movement loop leaves one exposed frame.
+	local liftY = groundedY(hrp.Position.X, hrp.Position.Z, hrp.Position.Y) + (CFG.escapeHeight or 10)
+	anchor(hrp, CFrame.new(hrp.Position.X, liftY, hrp.Position.Z))
 	local peelOk = stealMoveTo(hrp.Position.X, getLaneZ(), CFG.escapeSpeed, {
 		requireCarry = true,
 		elevated = true,
