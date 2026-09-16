@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V38
+  VER: V39
 ]]
 
-local GLITCH_UI_VER = "V38"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v38"
+local GLITCH_UI_VER = "V39"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v39"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -163,7 +163,7 @@ win.BorderSizePixel = 0
 win.Active = true
 win.ClipsDescendants = true
 win.Parent = gui
-corner(win, 14)
+corner(win, 22)
 stroke(win, Color3.fromRGB(180, 170, 255), 1.2)
 
 -- Header
@@ -184,8 +184,8 @@ corner(brandDot, 5)
 
 local title = Instance.new("TextLabel")
 title.BackgroundTransparency = 1
-title.Position = UDim2.fromOffset(34, 4)
-title.Size = UDim2.new(0, 280, 0, 22)
+title.Position = UDim2.fromOffset(34, 0)
+title.Size = UDim2.new(0, 210, 1, 0)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 15
 title.TextColor3 = TEXT
@@ -193,16 +193,24 @@ title.TextXAlignment = Enum.TextXAlignment.Left
 title.Text = "Glitch  ·  Steal An Egg"
 title.Parent = header
 
-local sub = Instance.new("TextLabel")
-sub.BackgroundTransparency = 1
-sub.Position = UDim2.fromOffset(34, 22)
-sub.Size = UDim2.new(0, 280, 0, 16)
-sub.Font = Enum.Font.Gotham
-sub.TextSize = 11
-sub.TextColor3 = MUTED
-sub.TextXAlignment = Enum.TextXAlignment.Left
-sub.Text = ("glass ui  ·  quest farm  ·  %s"):format(GLITCH_UI_VER)
-sub.Parent = header
+local versionDot = Instance.new("Frame")
+versionDot.Size = UDim2.fromOffset(7, 7)
+versionDot.Position = UDim2.fromOffset(248, 19)
+versionDot.BackgroundColor3 = ACCENT
+versionDot.BorderSizePixel = 0
+versionDot.Parent = header
+corner(versionDot, 4)
+
+local version = Instance.new("TextLabel")
+version.BackgroundTransparency = 1
+version.Position = UDim2.fromOffset(261, 0)
+version.Size = UDim2.fromOffset(48, 44)
+version.Font = Enum.Font.GothamBold
+version.TextSize = 12
+version.TextColor3 = MUTED
+version.TextXAlignment = Enum.TextXAlignment.Left
+version.Text = GLITCH_UI_VER
+version.Parent = header
 
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.fromOffset(28, 28)
@@ -306,7 +314,7 @@ local function makePage(name)
 	f.Parent = content
 	pad(f, 16, 14, 16, 14)
 	local list = Instance.new("UIListLayout")
-	list.Padding = UDim.new(0, 10)
+	list.Padding = UDim.new(0, 6)
 	list.Parent = f
 	pages[name] = f
 	return f
@@ -388,41 +396,41 @@ local function glassRow(parent, height)
 end
 
 local function makeToggle(parent, labelText, default, callback)
-	local row = glassRow(parent, 48)
+	local row = glassRow(parent, 32)
 	local lbl = Instance.new("TextLabel")
 	lbl.BackgroundTransparency = 1
 	lbl.Position = UDim2.fromOffset(14, 0)
-	lbl.Size = UDim2.new(1, -90, 1, 0)
+	lbl.Size = UDim2.new(1, -78, 1, 0)
 	lbl.Font = Enum.Font.GothamBold
-	lbl.TextSize = 14
+	lbl.TextSize = 12
 	lbl.TextColor3 = TEXT
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
 	lbl.Text = labelText
 	lbl.Parent = row
 
 	local track = Instance.new("TextButton")
-	track.Size = UDim2.fromOffset(48, 26)
-	track.Position = UDim2.new(1, -62, 0.5, -13)
+	track.Size = UDim2.fromOffset(42, 22)
+	track.Position = UDim2.new(1, -54, 0.5, -11)
 	track.BackgroundColor3 = Color3.fromRGB(55, 52, 75)
 	track.Text = ""
 	track.BorderSizePixel = 0
 	track.AutoButtonColor = false
 	track.Parent = row
-	corner(track, 13)
+	corner(track, 11)
 
 	local knob = Instance.new("Frame")
-	knob.Size = UDim2.fromOffset(20, 20)
+	knob.Size = UDim2.fromOffset(16, 16)
 	knob.Position = UDim2.fromOffset(3, 3)
 	knob.BackgroundColor3 = TEXT
 	knob.BorderSizePixel = 0
 	knob.Parent = track
-	corner(knob, 10)
+	corner(knob, 8)
 
 	local on = default and true or false
 	local function paint()
 		track.BackgroundColor3 = on and ACCENT or Color3.fromRGB(55, 52, 75)
 		TweenService:Create(knob, TweenInfo.new(0.15), {
-			Position = on and UDim2.fromOffset(25, 3) or UDim2.fromOffset(3, 3),
+			Position = on and UDim2.fromOffset(23, 3) or UDim2.fromOffset(3, 3),
 		}):Play()
 	end
 	paint()
@@ -443,13 +451,13 @@ local function makeToggle(parent, labelText, default, callback)
 end
 
 local function makeSlider(parent, labelText, minV, maxV, default, callback)
-	local row = glassRow(parent, 64)
+	local row = glassRow(parent, 42)
 	local lbl = Instance.new("TextLabel")
 	lbl.BackgroundTransparency = 1
-	lbl.Position = UDim2.fromOffset(14, 6)
+	lbl.Position = UDim2.fromOffset(14, 1)
 	lbl.Size = UDim2.new(1, -80, 0, 20)
 	lbl.Font = Enum.Font.GothamBold
-	lbl.TextSize = 13
+	lbl.TextSize = 12
 	lbl.TextColor3 = TEXT
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
 	lbl.Text = labelText
@@ -457,37 +465,37 @@ local function makeSlider(parent, labelText, minV, maxV, default, callback)
 
 	local valLbl = Instance.new("TextLabel")
 	valLbl.BackgroundTransparency = 1
-	valLbl.Position = UDim2.new(1, -70, 0, 6)
+	valLbl.Position = UDim2.new(1, -70, 0, 1)
 	valLbl.Size = UDim2.fromOffset(56, 20)
 	valLbl.Font = Enum.Font.GothamBold
-	valLbl.TextSize = 13
+	valLbl.TextSize = 12
 	valLbl.TextColor3 = ACCENT
 	valLbl.TextXAlignment = Enum.TextXAlignment.Right
 	valLbl.Text = tostring(default)
 	valLbl.Parent = row
 
 	local bar = Instance.new("Frame")
-	bar.Size = UDim2.new(1, -28, 0, 8)
-	bar.Position = UDim2.fromOffset(14, 40)
+	bar.Size = UDim2.new(1, -28, 0, 6)
+	bar.Position = UDim2.fromOffset(14, 29)
 	bar.BackgroundColor3 = Color3.fromRGB(45, 42, 65)
 	bar.BorderSizePixel = 0
 	bar.Parent = row
-	corner(bar, 4)
+	corner(bar, 3)
 
 	local fill = Instance.new("Frame")
 	fill.Size = UDim2.new((default - minV) / (maxV - minV), 0, 1, 0)
 	fill.BackgroundColor3 = ACCENT
 	fill.BorderSizePixel = 0
 	fill.Parent = bar
-	corner(fill, 4)
+	corner(fill, 3)
 
 	local knob = Instance.new("Frame")
-	knob.Size = UDim2.fromOffset(16, 16)
-	knob.Position = UDim2.new((default - minV) / (maxV - minV), -8, 0.5, -8)
+	knob.Size = UDim2.fromOffset(14, 14)
+	knob.Position = UDim2.new((default - minV) / (maxV - minV), -7, 0.5, -7)
 	knob.BackgroundColor3 = TEXT
 	knob.BorderSizePixel = 0
 	knob.Parent = bar
-	corner(knob, 8)
+	corner(knob, 7)
 
 	local value = default
 	local dragging = false
@@ -496,7 +504,7 @@ local function makeSlider(parent, labelText, minV, maxV, default, callback)
 		local rel = math.clamp((x - bar.AbsolutePosition.X) / math.max(bar.AbsoluteSize.X, 1), 0, 1)
 		value = math.floor(minV + rel * (maxV - minV) + 0.5)
 		fill.Size = UDim2.new(rel, 0, 1, 0)
-		knob.Position = UDim2.new(rel, -8, 0.5, -8)
+		knob.Position = UDim2.new(rel, -7, 0.5, -7)
 		valLbl.Text = tostring(value)
 		if callback then callback(value) end
 	end
@@ -593,24 +601,24 @@ farmToggle = makeToggle(mainPage, "Auto Steal Egg", false, function(on)
 	end
 end)
 
-local zoneRow = glassRow(mainPage, 52)
+local zoneRow = glassRow(mainPage, 34)
 biomeLbl = Instance.new("TextLabel")
 biomeLbl.BackgroundTransparency = 1
-biomeLbl.Position = UDim2.fromOffset(48, 0)
-biomeLbl.Size = UDim2.new(1, -96, 1, 0)
+biomeLbl.Position = UDim2.fromOffset(40, 0)
+biomeLbl.Size = UDim2.new(1, -80, 1, 0)
 biomeLbl.Font = Enum.Font.GothamBold
-biomeLbl.TextSize = 14
+biomeLbl.TextSize = 12
 biomeLbl.TextColor3 = Color3.fromRGB(255, 210, 110)
 biomeLbl.TextXAlignment = Enum.TextXAlignment.Center
 biomeLbl.Parent = zoneRow
 setBiomeLabel()
 
 local prevB = Instance.new("TextButton")
-prevB.Size = UDim2.fromOffset(34, 34)
-prevB.Position = UDim2.fromOffset(8, 9)
+prevB.Size = UDim2.fromOffset(26, 26)
+prevB.Position = UDim2.fromOffset(4, 4)
 prevB.Text = "‹"
 prevB.Font = Enum.Font.GothamBold
-prevB.TextSize = 24
+prevB.TextSize = 20
 prevB.TextColor3 = TEXT
 prevB.BackgroundColor3 = Color3.fromRGB(45, 42, 70)
 prevB.BorderSizePixel = 0
@@ -618,30 +626,16 @@ prevB.Parent = zoneRow
 corner(prevB, 8)
 
 local nextB = Instance.new("TextButton")
-nextB.Size = UDim2.fromOffset(34, 34)
-nextB.Position = UDim2.new(1, -42, 0, 9)
+nextB.Size = UDim2.fromOffset(26, 26)
+nextB.Position = UDim2.new(1, -30, 0, 4)
 nextB.Text = "›"
 nextB.Font = Enum.Font.GothamBold
-nextB.TextSize = 24
+nextB.TextSize = 20
 nextB.TextColor3 = TEXT
 nextB.BackgroundColor3 = Color3.fromRGB(45, 42, 70)
 nextB.BorderSizePixel = 0
 nextB.Parent = zoneRow
 corner(nextB, 8)
-
-local statusRow = glassRow(mainPage, 90)
-statusLbl = Instance.new("TextLabel")
-statusLbl.BackgroundTransparency = 1
-statusLbl.Position = UDim2.fromOffset(14, 8)
-statusLbl.Size = UDim2.new(1, -28, 1, -16)
-statusLbl.Font = Enum.Font.Gotham
-statusLbl.TextSize = 12
-statusLbl.TextColor3 = MUTED
-statusLbl.TextXAlignment = Enum.TextXAlignment.Left
-statusLbl.TextYAlignment = Enum.TextYAlignment.Top
-statusLbl.TextWrapped = true
-statusLbl.Text = ("Glitch %s\nmount=%s\nload core → version in status"):format(GLITCH_UI_VER, tostring(howMount))
-statusLbl.Parent = statusRow
 
 prevB.MouseButton1Click:Connect(function()
 	selectedBiome = selectedBiome <= 1 and #BIOMES or (selectedBiome - 1)
@@ -656,47 +650,26 @@ end)
 
 -- ESP
 sectionLabel(espPage, "World ESP")
-makeToggle(espPage, "Players", false, function(on)
+makeToggle(espPage, "ESP Players", false, function(on)
 	if not loadCore() then return end
 	pushConfig()
 	if coreApi.setEspPlayers then coreApi.setEspPlayers(on) end
 end)
-makeToggle(espPage, "Eggs", false, function(on)
+makeToggle(espPage, "ESP Eggs", false, function(on)
 	if not loadCore() then return end
 	pushConfig()
 	if coreApi.setEspEggs then coreApi.setEspEggs(on) end
 end)
-makeToggle(espPage, "Beasts", false, function(on)
-	if not loadCore() then return end
-	pushConfig()
-	if coreApi.setEspBeasts then coreApi.setEspBeasts(on) end
-end)
-
-local espHint = glassRow(espPage, 70)
-local eh = Instance.new("TextLabel")
-eh.BackgroundTransparency = 1
-eh.Position = UDim2.fromOffset(14, 8)
-eh.Size = UDim2.new(1, -28, 1, -16)
-eh.Font = Enum.Font.Gotham
-eh.TextSize = 12
-eh.TextColor3 = MUTED
-eh.TextWrapped = true
-eh.TextXAlignment = Enum.TextXAlignment.Left
-eh.TextYAlignment = Enum.TextYAlignment.Top
-eh.Text = "Beasts spawned by night and events. Highlight + name/distance. Guards are excluded."
-eh.Parent = espHint
-
 -- PLAYER
-sectionLabel(playerPage, "Movement")
 local walkToggle
-walkToggle = makeToggle(playerPage, "Walk Speed", false, function(on)
+walkToggle = makeToggle(playerPage, "Speed", false, function(on)
 	if not loadCore() then
 		walkToggle.set(false)
 		return
 	end
 	if coreApi.setWalkSpeed then coreApi.setWalkSpeed(on, walkSpeedVal) end
 end)
-makeSlider(playerPage, "Walk Speed value", 16, 500, walkSpeedVal, function(v)
+makeSlider(playerPage, "Walk Speed", 16, 500, walkSpeedVal, function(v)
 	walkSpeedVal = v
 	-- dragging slider implies you want it on (Boblo-style always apply while enabled)
 	if not walkToggle.get() then
@@ -720,20 +693,6 @@ makeSlider(playerPage, "Fly Speed", 20, 250, flySpeedVal, function(v)
 		coreApi.setFly(true, flySpeedVal)
 	end
 end)
-
-local flyHint = glassRow(playerPage, 72)
-local fh = Instance.new("TextLabel")
-fh.BackgroundTransparency = 1
-fh.Position = UDim2.fromOffset(14, 8)
-fh.Size = UDim2.new(1, -28, 1, -16)
-fh.Font = Enum.Font.Gotham
-fh.TextSize = 12
-fh.TextColor3 = MUTED
-fh.TextWrapped = true
-fh.TextXAlignment = Enum.TextXAlignment.Left
-fh.TextYAlignment = Enum.TextYAlignment.Top
-fh.Text = "V38: Cleaner zones and night/event Beasts ESP."
-fh.Parent = flyHint
 
 -- default page
 mainPage.Visible = true
