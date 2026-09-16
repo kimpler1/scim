@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V41
+  VER: V42
 ]]
 
-local GLITCH_UI_VER = "V41"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v41"
+local GLITCH_UI_VER = "V42"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v42"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -275,7 +275,7 @@ body.Parent = win
 local sidebar = Instance.new("Frame")
 sidebar.Size = UDim2.new(0, 132, 1, 0)
 sidebar.BackgroundColor3 = SIDE
-sidebar.BackgroundTransparency = 0.08
+sidebar.BackgroundTransparency = 0
 sidebar.BorderSizePixel = 0
 sidebar.Parent = body
 corner(sidebar, 22)
@@ -286,7 +286,7 @@ local sidebarJoin = Instance.new("Frame")
 sidebarJoin.Size = UDim2.new(1, -22, 1, 0)
 sidebarJoin.Position = UDim2.fromOffset(22, 0)
 sidebarJoin.BackgroundColor3 = SIDE
-sidebarJoin.BackgroundTransparency = 0.08
+sidebarJoin.BackgroundTransparency = 0
 sidebarJoin.BorderSizePixel = 0
 sidebarJoin.ZIndex = 0
 sidebarJoin.Parent = sidebar
@@ -308,8 +308,8 @@ sideList.Parent = sideScroll
 local content = Instance.new("Frame")
 content.Size = UDim2.new(1, -132, 1, 0)
 content.Position = UDim2.fromOffset(132, 0)
-content.BackgroundColor3 = GLASS2
-content.BackgroundTransparency = 0.35
+content.BackgroundColor3 = SIDE
+content.BackgroundTransparency = 0
 content.BorderSizePixel = 0
 content.ClipsDescendants = true
 content.Parent = body
@@ -319,8 +319,8 @@ corner(content, 22)
 -- edge remains rounded, so no dark gap appears between the two panels.
 local contentJoin = Instance.new("Frame")
 contentJoin.Size = UDim2.new(1, -22, 1, 0)
-contentJoin.BackgroundColor3 = GLASS2
-contentJoin.BackgroundTransparency = 0.35
+contentJoin.BackgroundColor3 = SIDE
+contentJoin.BackgroundTransparency = 0
 contentJoin.BorderSizePixel = 0
 contentJoin.ZIndex = 0
 contentJoin.Parent = content
