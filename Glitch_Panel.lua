@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V30
+  VER: V31
 ]]
 
-local GLITCH_UI_VER = "V30"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v30"
+local GLITCH_UI_VER = "V31"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v31"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -751,7 +751,7 @@ fh.TextColor3 = MUTED
 fh.TextWrapped = true
 fh.TextXAlignment = Enum.TextXAlignment.Left
 fh.TextYAlignment = Enum.TextYAlignment.Top
-fh.Text = "V30: Walk Speed + Auto Farm + Fly (Best Version freeze)."
+fh.Text = "V31: Fast regrab; Walk Speed + Auto Farm + Fly retained."
 fh.Parent = flyHint
 
 -- default page
