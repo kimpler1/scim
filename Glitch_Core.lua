@@ -1,15 +1,15 @@
 --[[
   Glitch Core — Steal An Egg
-  Farm: exact Best Version V18 (guard sleep 1.4 + full trySteal regrab).
+  Farm: V18 base + live guard-idle wait and zone-bounds egg matching.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V32
+  VER: V33
   FROZEN (LO 2026-09-16):
-    - Autofarm = exact Best Version V18 guardHitThenRegrab / peelThenEscape / farmOnce
+    - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with live guard-idle wait
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V32"
+local GLITCH_CORE_VER = "V33"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -540,6 +540,11 @@ local function areaMatches(a, b)
 end
 
 local function findZoneFolder(name)
+	if not GuardAreas then
+		local objects = ch(Workspace, "__" .. "OBJECTS", 1)
+		local areas = objects and ch(objects, "Areas", 1)
+		GuardAreas = areas and ch(areas, "Guard" .. "Areas", 1)
+	end
 	if not GuardAreas then return nil end
 	local exact = GuardAreas:FindFirstChild(name)
 	if exact then return exact end
@@ -595,7 +600,8 @@ end
 
 local function nearBiomeCenter(pos, biome)
 	if not pos then return false end
-	local center = BIOME_CENTERS[biome] or getBiomeCenter(biome)
+	-- Prefer live zone bounds: hard-coded centres can drift when the map changes.
+	local center = getBiomeCenter(biome) or BIOME_CENTERS[biome]
 	if not center then return false end
 	local rx = CFG.biomeRadiusX or 220
 	local rz = CFG.biomeRadiusZ or 140
@@ -605,6 +611,8 @@ end
 local function eggInSelectedBiome(egg, record)
 	local biome = CFG.biomes[CFG.biomeIndex]
 	if record and areaMatches(record.AreaId, biome) then return true end
+	local instanceArea = egg and (egg:GetAttribute("AreaId") or egg:GetAttribute("Area") or egg:GetAttribute("Zone"))
+	if areaMatches(instanceArea, biome) then return true end
 	local pos = eggPos(egg)
 	local bounds = getZoneBounds(biome)
 	if bounds and pos then
@@ -936,6 +944,63 @@ local function approachAndSteal(egg, speed)
 	return trySteal(egg)
 end
 
+-- Oxide-style guard state check: wait for the guard that hit us to become idle,
+-- instead of assuming that every server uses the same 1.4 second cooldown.
+local function findGuardForEgg(biome, pos)
+	local zone = findZoneFolder(biome)
+	if not zone then return nil end
+	local exact = zone:FindFirstChild("Guard", true) or zone:FindFirstChild("ForestGuardAuthored", true)
+	if exact and exact:IsA("Model") then return exact end
+	local best, bestDist
+	for _, inst in ipairs(zone:GetDescendants()) do
+		if inst:IsA("Model") then
+			local name = inst.Name:lower()
+			local hasState = inst:GetAttribute("GuardState") ~= nil or inst:GetAttribute("Alert") ~= nil
+			if hasState or name:find("guard", 1, true) then
+				local ok, pivot = pcall(function() return inst:GetPivot() end)
+				if ok and pivot then
+					local d = pos and (pivot.Position - pos).Magnitude or 0
+					if not bestDist or d < bestDist then best, bestDist = inst, d end
+				end
+			end
+		end
+	end
+	return best
+end
+
+local function guardIdleState(guard)
+	if not guard then return nil end
+	local function firstAttribute(...)
+		for i = 1, select("#", ...) do
+			local value = guard:GetAttribute(select(i, ...))
+			if value ~= nil then return value end
+		end
+	end
+	local sleeping = firstAttribute("Sleeping", "IsSleeping", "Asleep", "Sleep")
+	if sleeping == true then return true end
+	local alert = firstAttribute("Alert", "Alerted", "IsAlerted", "Chasing")
+	if alert == false then return true end
+	local state = tostring(guard:GetAttribute("GuardState") or guard:GetAttribute("State") or ""):lower()
+	if state:find("sleep", 1, true) or state:find("idle", 1, true) then return true end
+	if state:find("alert", 1, true) or state:find("chase", 1, true) or state:find("attack", 1, true) then return false end
+	local alertGui = guard:FindFirstChild("Alert", true)
+	if alertGui and alertGui:IsA("BillboardGui") and alertGui.Enabled == false then return true end
+	return nil
+end
+
+local function waitForGuardIdle(biome, pos, alive)
+	local guard = findGuardForEgg(biome, pos)
+	local limit = guard and 4.5 or 1.4
+	local t0 = tick()
+	while tick() - t0 < limit and alive() do
+		local idle = guardIdleState(guard)
+		if idle == true then return end
+		-- Unknown guard variants retain the proven V18 fallback rather than stalling.
+		if idle == nil and tick() - t0 >= 1.4 then return end
+		task.wait(0.14)
+	end
+end
+
 -- Exact Best Version V18 guard-hit: stand → Guard sleep 1.4 → full trySteal regrab.
 -- keepGoing: only for manual WS/Fly validate; farm uses autoFarm.
 local function guardHitThenRegrab(egg, keepGoing)
@@ -999,8 +1064,8 @@ local function guardHitThenRegrab(egg, keepGoing)
 		task.wait(0.3)
 	end
 
-	setStatus("Guard sleep")
-	task.wait(1.4)
+	setStatus("Guard idle")
+	waitForGuardIdle(CFG.biomes[CFG.biomeIndex], pos, alive)
 
 	setStatus("Regrab")
 	if isActuallyCarrying() then
