@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V26
+  VER: V27
 ]]
 
-local GLITCH_UI_VER = "V26"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v26"
+local GLITCH_UI_VER = "V27"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v27"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -797,7 +797,7 @@ fh.TextColor3 = MUTED
 fh.TextWrapped = true
 fh.TextXAlignment = Enum.TextXAlignment.Left
 fh.TextYAlignment = Enum.TextYAlignment.Top
-fh.Text = "V26: peel ASAP after regrab. Close (×) full reset — reinject starts clean."
+fh.Text = "V27: Autofarm = Best Version V18. Close (×) full reset."
 fh.Parent = flyHint
 
 -- default page
