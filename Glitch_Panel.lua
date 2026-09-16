@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V33
+  VER: V34
 ]]
 
-local GLITCH_UI_VER = "V33"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v33"
+local GLITCH_UI_VER = "V34"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v34"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -751,7 +751,7 @@ fh.TextColor3 = MUTED
 fh.TextWrapped = true
 fh.TextXAlignment = Enum.TextXAlignment.Left
 fh.TextYAlignment = Enum.TextYAlignment.Top
-fh.Text = "V33: Live guard-idle wait + zone egg detection."
+fh.Text = "V34: Titan guard-home confirmation before regrab."
 fh.Parent = flyHint
 
 -- default page

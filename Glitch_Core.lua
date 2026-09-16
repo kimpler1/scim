@@ -1,15 +1,15 @@
 --[[
   Glitch Core — Steal An Egg
-  Farm: V18 base + live guard-idle wait and zone-bounds egg matching.
+  Farm: V18 base + live guard-idle wait with Titan Temple fallback.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V33
+  VER: V34
   FROZEN (LO 2026-09-16):
-    - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with live guard-idle wait
+    - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with guard-home confirmation
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V33"
+local GLITCH_CORE_VER = "V34"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -52,6 +52,7 @@ local CFG = {
 	biomeRadiusX = 220,
 	biomeRadiusZ = 140,
 	guardHit = true, -- Oxide: steal -> get hit -> stand -> regrab -> return (fixes Delivery failed)
+	titanGuardFallback = 3.2, -- giant guard's delayed ground hit outlasts the normal 1.4 s fallback
 	status = function() end,
 }
 
@@ -968,7 +969,7 @@ local function findGuardForEgg(biome, pos)
 	return best
 end
 
-local function guardIdleState(guard)
+local function guardIdleState(guard, elapsed)
 	if not guard then return nil end
 	local function firstAttribute(...)
 		for i = 1, select("#", ...) do
@@ -985,18 +986,31 @@ local function guardIdleState(guard)
 	if state:find("alert", 1, true) or state:find("chase", 1, true) or state:find("attack", 1, true) then return false end
 	local alertGui = guard:FindFirstChild("Alert", true)
 	if alertGui and alertGui:IsA("BillboardGui") and alertGui.Enabled == false then return true end
+	-- Some guards expose no state attributes. Their home marker is more reliable than a fixed delay.
+	local hum = guard:FindFirstChildOfClass("Humanoid")
+	local root = guard.PrimaryPart or guard:FindFirstChild("HumanoidRootPart") or guard:FindFirstChildWhichIsA("BasePart", true)
+	local eggPoint = guard:FindFirstChild("EggPoint", true)
+	if root and eggPoint and eggPoint:IsA("BasePart") then
+		local distanceHome = (root.Position - eggPoint.Position).Magnitude
+		local moving = hum and hum.MoveDirection.Magnitude > 0.15
+		if distanceHome < 7 and not moving then return true end
+		if distanceHome < 12 and (elapsed or 0) > 1.2 and not moving then return true end
+		return false
+	end
 	return nil
 end
 
 local function waitForGuardIdle(biome, pos, alive)
 	local guard = findGuardForEgg(biome, pos)
-	local limit = guard and 4.5 or 1.4
+	local unknownFallback = biome == "Titan Temple" and (CFG.titanGuardFallback or 3.2) or 1.4
+	local limit = guard and 4.5 or unknownFallback
 	local t0 = tick()
 	while tick() - t0 < limit and alive() do
-		local idle = guardIdleState(guard)
+		local elapsed = tick() - t0
+		local idle = guardIdleState(guard, elapsed)
 		if idle == true then return end
-		-- Unknown guard variants retain the proven V18 fallback rather than stalling.
-		if idle == nil and tick() - t0 >= 1.4 then return end
+		-- Unknown guard variants retain V18 elsewhere; Titan's delayed smash needs longer.
+		if idle == nil and elapsed >= unknownFallback then return end
 		task.wait(0.14)
 	end
 end
