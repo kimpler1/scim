@@ -1,14 +1,14 @@
 --[[
   Glitch Core — Steal An Egg
   Farm: Quest V18 lineage. ESP + Walk/Fly + Oxide Evidence scrub.
-  VER: V29  (= Best Version V25 farm/WS/Fly; UI languages only additive)
+  VER: V25
   FROZEN (LO 2026-09-15):
     - Autofarm: farmOnce / guardHitThenRegrab / peelThenEscape
     - WS + Fly: scrub @0.2s cached, unanchored velocity fly, WS loop
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base (do not auto-freeze/validate)
 ]]
 
-local GLITCH_CORE_VER = "V29"
+local GLITCH_CORE_VER = "V25"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")

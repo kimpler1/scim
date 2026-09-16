@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
-  Tabs: Main | ESP | Player | General
-  VER: V29
+  Tabs: Main | ESP | Player
+  VER: V25
 ]]
 
-local GLITCH_UI_VER = "V29"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v29"
+local GLITCH_UI_VER = "V25"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v25"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -73,103 +73,9 @@ local function setStatus(t)
 	if statusLbl then statusLbl.Text = tostring(t) end
 end
 
-local locale = "en"
-local LANG_ORDER = { "en", "ru", "zh", "de", "fr", "es" }
-local LANG_LABEL = {
-	en = "English", ru = "Русский", zh = "中文",
-	de = "Deutsch", fr = "Français", es = "Español",
-}
-local I18N = {
-	en = {
-		features = "Features", main = "Main", esp = "ESP", player = "Player", general = "General",
-		autofarm = "Autofarm", auto_steal = "Auto Steal Egg",
-		zone = "Zone", approach_escape = "Approach  ·  Escape", approach = "Approach", escape = "Escape",
-		prev = "< Prev", next = "Next >", world_esp = "World ESP", players = "Players", eggs = "Eggs",
-		beasts = "Beasts / Night",
-		esp_hint = "Beasts: MonsterParasite + zone guards + night/boss models.",
-		movement = "Movement", walk_speed = "Walk Speed", walk_value = "Walk Speed value",
-		fly = "Fly (WASD + Space/Ctrl)", fly_speed = "Fly Speed",
-		fly_hint = "V29 = V25 farm/WS/Fly. Languages in General.",
-		language = "Language", lang_hint = "UI language only. Biome names stay in-game.",
-		subtitle = "glass ui  ·  quest farm  ·  %s",
-		status_boot = "Glitch %s\nmount=%s\nload core → version in status",
-	},
-	ru = {
-		features = "Функции", main = "Основное", esp = "ESP", player = "Игрок", general = "Общее",
-		autofarm = "Автофарм", auto_steal = "Авто кража яиц",
-		zone = "Зона", approach_escape = "Подход  ·  Уход", approach = "Подход", escape = "Уход",
-		prev = "< Назад", next = "Далее >", world_esp = "Мир ESP", players = "Игроки", eggs = "Яйца",
-		beasts = "Монстры / Ночь",
-		esp_hint = "Монстры: паразит + гарды + ночь/боссы.",
-		movement = "Движение", walk_speed = "Скорость ходьбы", walk_value = "Значение скорости",
-		fly = "Полёт (WASD + Space/Ctrl)", fly_speed = "Скорость полёта",
-		fly_hint = "V29 = V25 автофарм/WS/Fly. Языки во вкладке Общее.",
-		language = "Язык", lang_hint = "Только язык интерфейса. Биомы как в игре.",
-		subtitle = "glass ui  ·  quest farm  ·  %s",
-		status_boot = "Glitch %s\nmount=%s\nзагрузка core → версия в статусе",
-	},
-	zh = {
-		features = "功能", main = "主页", esp = "ESP", player = "玩家", general = "通用",
-		autofarm = "自动挂机", auto_steal = "自动偷蛋",
-		zone = "区域", approach_escape = "接近  ·  撤离", approach = "接近", escape = "撤离",
-		prev = "< 上一个", next = "下一个 >", world_esp = "世界 ESP", players = "玩家", eggs = "蛋",
-		beasts = "野兽 / 夜晚", esp_hint = "野兽：寄生虫 + 守卫 + 夜晚/Boss。",
-		movement = "移动", walk_speed = "步行速度", walk_value = "速度数值",
-		fly = "飞行 (WASD + Space/Ctrl)", fly_speed = "飞行速度",
-		fly_hint = "V29 = V25 挂机/步行/飞行。语言在通用。",
-		language = "语言", lang_hint = "仅界面语言。生物群系名保持游戏原文。",
-		subtitle = "glass ui  ·  quest farm  ·  %s",
-		status_boot = "Glitch %s\nmount=%s\n加载 core → 状态栏版本",
-	},
-	de = {
-		features = "Funktionen", main = "Haupt", esp = "ESP", player = "Spieler", general = "Allgemein",
-		autofarm = "Autofarm", auto_steal = "Auto Eier stehlen",
-		zone = "Zone", approach_escape = "Anflug  ·  Flucht", approach = "Anflug", escape = "Flucht",
-		prev = "< Zurück", next = "Weiter >", world_esp = "Welt ESP", players = "Spieler", eggs = "Eier",
-		beasts = "Bestien / Nacht", esp_hint = "Bestien: Parasit + Wachen + Nacht/Bosse.",
-		movement = "Bewegung", walk_speed = "Laufgeschwindigkeit", walk_value = "Geschwindigkeitswert",
-		fly = "Flug (WASD + Space/Ctrl)", fly_speed = "Fluggeschwindigkeit",
-		fly_hint = "V29 = V25 Farm/WS/Fly. Sprachen unter Allgemein.",
-		language = "Sprache", lang_hint = "Nur UI-Sprache. Biom-Namen wie im Spiel.",
-		subtitle = "glass ui  ·  quest farm  ·  %s",
-		status_boot = "Glitch %s\nmount=%s\nCore laden → Version im Status",
-	},
-	fr = {
-		features = "Fonctions", main = "Principal", esp = "ESP", player = "Joueur", general = "Général",
-		autofarm = "Autofarm", auto_steal = "Vol auto d'œufs",
-		zone = "Zone", approach_escape = "Approche  ·  Fuite", approach = "Approche", escape = "Fuite",
-		prev = "< Préc.", next = "Suiv. >", world_esp = "Monde ESP", players = "Joueurs", eggs = "Œufs",
-		beasts = "Bêtes / Nuit", esp_hint = "Bêtes : parasite + gardes + nuit/boss.",
-		movement = "Mouvement", walk_speed = "Vitesse de marche", walk_value = "Valeur de vitesse",
-		fly = "Vol (WASD + Space/Ctrl)", fly_speed = "Vitesse de vol",
-		fly_hint = "V29 = V25 farm/WS/Fly. Langues dans Général.",
-		language = "Langue", lang_hint = "Langue UI uniquement. Biomes inchangés.",
-		subtitle = "glass ui  ·  quest farm  ·  %s",
-		status_boot = "Glitch %s\nmount=%s\ncharger core → version dans le statut",
-	},
-	es = {
-		features = "Funciones", main = "Principal", esp = "ESP", player = "Jugador", general = "General",
-		autofarm = "Autofarm", auto_steal = "Robo auto de huevos",
-		zone = "Zona", approach_escape = "Acercar  ·  Escapar", approach = "Acercar", escape = "Escapar",
-		prev = "< Ant.", next = "Sig. >", world_esp = "Mundo ESP", players = "Jugadores", eggs = "Huevos",
-		beasts = "Bestias / Noche", esp_hint = "Bestias: parásito + guardias + noche/jefes.",
-		movement = "Movimiento", walk_speed = "Velocidad al caminar", walk_value = "Valor de velocidad",
-		fly = "Vuelo (WASD + Space/Ctrl)", fly_speed = "Velocidad de vuelo",
-		fly_hint = "V29 = V25 farm/WS/Fly. Idiomas en General.",
-		language = "Idioma", lang_hint = "Solo idioma de la UI. Biomas como en el juego.",
-		subtitle = "glass ui  ·  quest farm  ·  %s",
-		status_boot = "Glitch %s\nmount=%s\ncargar core → versión en el estado",
-	},
-}
-
-local function tr(key)
-	local pack = I18N[locale] or I18N.en
-	return pack[key] or I18N.en[key] or key
-end
-
 local function setBiomeLabel()
 	if biomeLbl then
-		biomeLbl.Text = ("%s [%d/%d]: %s"):format(tr("zone"), selectedBiome, #BIOMES, BIOMES[selectedBiome])
+		biomeLbl.Text = ("Zone [%d/%d]: %s"):format(selectedBiome, #BIOMES, BIOMES[selectedBiome])
 	end
 end
 
@@ -453,13 +359,7 @@ local function navItem(text, pageName, isHeader)
 	bar.Visible = false
 	bar.Parent = b
 	corner(bar, 2)
-	navBtns[pageName] = {
-		btn = b,
-		bar = bar,
-		setText = function(t)
-			b.Text = "  " .. tostring(t)
-		end,
-	}
+	navBtns[pageName] = { btn = b, bar = bar }
 	b.MouseButton1Click:Connect(function()
 		currentPage = pageName
 		for name, pg in pairs(pages) do
@@ -538,9 +438,6 @@ local function makeToggle(parent, labelText, default, callback)
 		end,
 		get = function()
 			return on
-		end,
-		setLabel = function(t)
-			lbl.Text = tostring(t)
 		end,
 	}
 end
@@ -625,9 +522,6 @@ local function makeSlider(parent, labelText, minV, maxV, default, callback)
 		get = function()
 			return value
 		end,
-		setLabel = function(t)
-			lbl.Text = tostring(t)
-		end,
 	}
 end
 
@@ -669,26 +563,21 @@ local function makeNumRow(parent, leftText, rightText, leftDef, rightDef, onLeft
 		local n = tonumber(b.Text)
 		if n and onRight then onRight(n, b) end
 	end)
-	return a, b, function(lt, rt)
-		a.PlaceholderText = tostring(lt)
-		b.PlaceholderText = tostring(rt)
-	end
+	return a, b
 end
 
 -- Pages
 local mainPage = makePage("Main")
 local espPage = makePage("ESP")
 local playerPage = makePage("Player")
-local generalPage = makePage("General")
 
-local featHdr = sectionLabel(sideScroll, "Features")
+sectionLabel(sideScroll, "Features")
 navItem("Main", "Main")
 navItem("ESP", "ESP")
 navItem("Player", "Player")
-navItem("General", "General")
 
 -- MAIN
-local secFarm = sectionLabel(mainPage, "Autofarm")
+sectionLabel(mainPage, "Autofarm")
 local farmToggle
 farmToggle = makeToggle(mainPage, "Auto Steal Egg", false, function(on)
 	if not loadCore() then
@@ -742,8 +631,8 @@ nextB.BorderSizePixel = 0
 nextB.Parent = navRow
 corner(nextB, 8)
 
-local secAE = sectionLabel(mainPage, "Approach  ·  Escape")
-local _, _, setAEPlaceholders = makeNumRow(mainPage, "Approach", "Escape", approachSpeed, escapeSpeed, function(n, box)
+sectionLabel(mainPage, "Approach  ·  Escape")
+makeNumRow(mainPage, "Approach", "Escape", approachSpeed, escapeSpeed, function(n, box)
 	if n >= 50 and n <= 1000 then
 		approachSpeed = n
 		pushConfig()
@@ -770,7 +659,7 @@ statusLbl.TextColor3 = MUTED
 statusLbl.TextXAlignment = Enum.TextXAlignment.Left
 statusLbl.TextYAlignment = Enum.TextYAlignment.Top
 statusLbl.TextWrapped = true
-statusLbl.Text = tr("status_boot"):format(GLITCH_UI_VER, tostring(howMount))
+statusLbl.Text = ("Glitch %s\nmount=%s\nload core → version in status"):format(GLITCH_UI_VER, tostring(howMount))
 statusLbl.Parent = statusRow
 
 prevB.MouseButton1Click:Connect(function()
@@ -785,18 +674,18 @@ nextB.MouseButton1Click:Connect(function()
 end)
 
 -- ESP
-local secEsp = sectionLabel(espPage, "World ESP")
-local togPlayers = makeToggle(espPage, "Players", false, function(on)
+sectionLabel(espPage, "World ESP")
+makeToggle(espPage, "Players", false, function(on)
 	if not loadCore() then return end
 	pushConfig()
 	if coreApi.setEspPlayers then coreApi.setEspPlayers(on) end
 end)
-local togEggs = makeToggle(espPage, "Eggs", false, function(on)
+makeToggle(espPage, "Eggs", false, function(on)
 	if not loadCore() then return end
 	pushConfig()
 	if coreApi.setEspEggs then coreApi.setEspEggs(on) end
 end)
-local togBeasts = makeToggle(espPage, "Beasts / Night", false, function(on)
+makeToggle(espPage, "Beasts / Night", false, function(on)
 	if not loadCore() then return end
 	pushConfig()
 	if coreApi.setEspBeasts then coreApi.setEspBeasts(on) end
@@ -813,11 +702,11 @@ eh.TextColor3 = MUTED
 eh.TextWrapped = true
 eh.TextXAlignment = Enum.TextXAlignment.Left
 eh.TextYAlignment = Enum.TextYAlignment.Top
-eh.Text = tr("esp_hint")
+eh.Text = "Beasts: MonsterParasite + zone guards + night/boss models. Highlight + name/distance."
 eh.Parent = espHint
 
 -- PLAYER
-local secMove = sectionLabel(playerPage, "Movement")
+sectionLabel(playerPage, "Movement")
 local walkToggle
 walkToggle = makeToggle(playerPage, "Walk Speed", false, function(on)
 	if not loadCore() then
@@ -826,8 +715,9 @@ walkToggle = makeToggle(playerPage, "Walk Speed", false, function(on)
 	end
 	if coreApi.setWalkSpeed then coreApi.setWalkSpeed(on, walkSpeedVal) end
 end)
-local walkSlider = makeSlider(playerPage, "Walk Speed value", 16, 500, walkSpeedVal, function(v)
+makeSlider(playerPage, "Walk Speed value", 16, 500, walkSpeedVal, function(v)
 	walkSpeedVal = v
+	-- dragging slider implies you want it on (Boblo-style always apply while enabled)
 	if not walkToggle.get() then
 		walkToggle.set(true)
 	end
@@ -843,7 +733,7 @@ flyToggle = makeToggle(playerPage, "Fly (WASD + Space/Ctrl)", false, function(on
 	end
 	if coreApi.setFly then coreApi.setFly(on, flySpeedVal) end
 end)
-local flySlider = makeSlider(playerPage, "Fly Speed", 20, 250, flySpeedVal, function(v)
+makeSlider(playerPage, "Fly Speed", 20, 250, flySpeedVal, function(v)
 	flySpeedVal = v
 	if flyToggle.get() and coreApi and coreApi.setFly then
 		coreApi.setFly(true, flySpeedVal)
@@ -861,85 +751,8 @@ fh.TextColor3 = MUTED
 fh.TextWrapped = true
 fh.TextXAlignment = Enum.TextXAlignment.Left
 fh.TextYAlignment = Enum.TextYAlignment.Top
-fh.Text = tr("fly_hint")
+fh.Text = "V25: WS/Fly no per-frame getgc lag. PlantEgg on base. Autofarm frozen."
 fh.Parent = flyHint
-
--- GENERAL / Language
-local secLang = sectionLabel(generalPage, "Language")
-local langHint = glassRow(generalPage, 48)
-local lh = Instance.new("TextLabel")
-lh.BackgroundTransparency = 1
-lh.Position = UDim2.fromOffset(14, 0)
-lh.Size = UDim2.new(1, -28, 1, 0)
-lh.Font = Enum.Font.Gotham
-lh.TextSize = 12
-lh.TextColor3 = MUTED
-lh.TextXAlignment = Enum.TextXAlignment.Left
-lh.Text = tr("lang_hint")
-lh.Parent = langHint
-
-local langBtns = {}
-local function paintLangBtns()
-	for code, btn in pairs(langBtns) do
-		btn.BackgroundColor3 = (code == locale) and ACCENT or Color3.fromRGB(45, 42, 70)
-	end
-end
-
-local function applyLang(code)
-	if not I18N[code] then return end
-	locale = code
-	featHdr.Text = string.upper(tr("features"))
-	if navBtns.Main then navBtns.Main.setText(tr("main")) end
-	if navBtns.ESP then navBtns.ESP.setText(tr("esp")) end
-	if navBtns.Player then navBtns.Player.setText(tr("player")) end
-	if navBtns.General then navBtns.General.setText(tr("general")) end
-	secFarm.Text = string.upper(tr("autofarm"))
-	farmToggle.setLabel(tr("auto_steal"))
-	setBiomeLabel()
-	prevB.Text = tr("prev")
-	nextB.Text = tr("next")
-	secAE.Text = string.upper(tr("approach_escape"))
-	if setAEPlaceholders then setAEPlaceholders(tr("approach"), tr("escape")) end
-	secEsp.Text = string.upper(tr("world_esp"))
-	togPlayers.setLabel(tr("players"))
-	togEggs.setLabel(tr("eggs"))
-	togBeasts.setLabel(tr("beasts"))
-	eh.Text = tr("esp_hint")
-	secMove.Text = string.upper(tr("movement"))
-	walkToggle.setLabel(tr("walk_speed"))
-	walkSlider.setLabel(tr("walk_value"))
-	flyToggle.setLabel(tr("fly"))
-	flySlider.setLabel(tr("fly_speed"))
-	fh.Text = tr("fly_hint")
-	secLang.Text = string.upper(tr("language"))
-	lh.Text = tr("lang_hint")
-	sub.Text = tr("subtitle"):format(GLITCH_UI_VER)
-	paintLangBtns()
-end
-
-local langRow1 = glassRow(generalPage, 48)
-local langRow2 = glassRow(generalPage, 48)
-for i, code in ipairs(LANG_ORDER) do
-	local parent = (i <= 3) and langRow1 or langRow2
-	local idx = ((i - 1) % 3)
-	local btn = Instance.new("TextButton")
-	btn.Size = UDim2.new(0.3, 0, 0, 32)
-	btn.Position = UDim2.new(0.03 + idx * 0.32, 0, 0.5, -16)
-	btn.Text = LANG_LABEL[code]
-	btn.Font = Enum.Font.GothamBold
-	btn.TextSize = 12
-	btn.TextColor3 = TEXT
-	btn.BackgroundColor3 = Color3.fromRGB(45, 42, 70)
-	btn.BorderSizePixel = 0
-	btn.Parent = parent
-	corner(btn, 8)
-	langBtns[code] = btn
-	btn.MouseButton1Click:Connect(function()
-		applyLang(code)
-	end)
-end
-paintLangBtns()
-applyLang("en")
 
 -- default page
 mainPage.Visible = true
