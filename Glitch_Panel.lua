@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V39
+  VER: V40
 ]]
 
-local GLITCH_UI_VER = "V39"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v39"
+local GLITCH_UI_VER = "V40"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v40"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -173,6 +173,7 @@ header.BackgroundColor3 = SIDE
 header.BackgroundTransparency = 0.15
 header.BorderSizePixel = 0
 header.Parent = win
+corner(header, 22)
 
 local brandDot = Instance.new("Frame")
 brandDot.Size = UDim2.fromOffset(10, 10)
@@ -277,6 +278,7 @@ sidebar.BackgroundColor3 = SIDE
 sidebar.BackgroundTransparency = 0.08
 sidebar.BorderSizePixel = 0
 sidebar.Parent = body
+corner(sidebar, 22)
 
 local sideScroll = Instance.new("ScrollingFrame")
 sideScroll.Size = UDim2.new(1, 0, 1, -8)
@@ -300,6 +302,7 @@ content.BackgroundTransparency = 0.35
 content.BorderSizePixel = 0
 content.ClipsDescendants = true
 content.Parent = body
+corner(content, 22)
 
 local function makePage(name)
 	local f = Instance.new("ScrollingFrame")
@@ -584,7 +587,6 @@ navItem("ESP", "ESP")
 navItem("Player", "Player")
 
 -- MAIN
-sectionLabel(mainPage, "Autofarm")
 local farmToggle
 farmToggle = makeToggle(mainPage, "Auto Steal Egg", false, function(on)
 	if not loadCore() then
@@ -615,10 +617,10 @@ setBiomeLabel()
 
 local prevB = Instance.new("TextButton")
 prevB.Size = UDim2.fromOffset(26, 26)
-prevB.Position = UDim2.fromOffset(4, 4)
-prevB.Text = "‹"
+prevB.Position = UDim2.new(0, 5, 0.5, -13)
+prevB.Text = "←"
 prevB.Font = Enum.Font.GothamBold
-prevB.TextSize = 20
+prevB.TextSize = 14
 prevB.TextColor3 = TEXT
 prevB.BackgroundColor3 = Color3.fromRGB(45, 42, 70)
 prevB.BorderSizePixel = 0
@@ -627,10 +629,10 @@ corner(prevB, 8)
 
 local nextB = Instance.new("TextButton")
 nextB.Size = UDim2.fromOffset(26, 26)
-nextB.Position = UDim2.new(1, -30, 0, 4)
-nextB.Text = "›"
+nextB.Position = UDim2.new(1, -31, 0.5, -13)
+nextB.Text = "→"
 nextB.Font = Enum.Font.GothamBold
-nextB.TextSize = 20
+nextB.TextSize = 14
 nextB.TextColor3 = TEXT
 nextB.BackgroundColor3 = Color3.fromRGB(45, 42, 70)
 nextB.BorderSizePixel = 0
@@ -649,7 +651,6 @@ nextB.MouseButton1Click:Connect(function()
 end)
 
 -- ESP
-sectionLabel(espPage, "World ESP")
 makeToggle(espPage, "ESP Players", false, function(on)
 	if not loadCore() then return end
 	pushConfig()
