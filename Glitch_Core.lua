@@ -1,15 +1,16 @@
 --[[
   Glitch Core — Steal An Egg
   Farm: exact Best Version V18 (guard sleep 1.4 + full trySteal regrab).
-  WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V26
+  WS/Fly/ESP: Best Version V25 (unchanged movers).
+  VER: V27
   FROZEN (LO 2026-09-16):
-    - Autofarm = Best Version V18 guardHitThenRegrab / peelThenEscape / farmOnce
-    - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
+    - Autofarm = Best Version V18 / V30 (do not edit farmOnce / guardHit / peel)
+    - WS + Fly movers: V25
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
+  V27 (additive only): Auto off restores WS; × resets WS+Fly+farm to vanilla.
 ]]
 
-local GLITCH_CORE_VER = "V26"
+local GLITCH_CORE_VER = "V27"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -1998,8 +1999,21 @@ function Api.stopFarm()
 	autoFarm = false
 	cancelManualDeliverAssist()
 	local hum = getHum()
-	if hum then hum.PlatformStand = false end
-	setStatus("Auto off")
+	if hum then
+		hum.PlatformStand = false
+		hum.Sit = false
+		pcall(function()
+			hum:ChangeState(Enum.HumanoidStateType.Running)
+		end)
+	end
+	-- Farm used CFrame stealMoveTo; hand control back to WS if it was on
+	if walkSpeedOn then
+		applyWalkSpeed()
+		ensureMoveLoop()
+		setStatus(("Auto off — WS %d"):format(walkSpeedVal))
+	else
+		setStatus("Auto off")
+	end
 end
 
 function Api.setEsp(on)
@@ -2043,7 +2057,25 @@ end
 function Api.destroy()
 	autoFarm = false
 	stopFly()
+	-- Must reset WalkSpeed BEFORE killing the WS loop (flag-only leave leftover speed)
 	walkSpeedOn = false
+	local hum = getHum()
+	if hum then
+		pcall(function()
+			hum.WalkSpeed = 16
+			hum.PlatformStand = false
+			hum.Sit = false
+			hum:ChangeState(Enum.HumanoidStateType.Running)
+		end)
+	end
+	local hrp = getHRP()
+	if hrp then
+		pcall(function()
+			hrp.Anchored = false
+			hrp.AssemblyLinearVelocity = Vector3.zero
+			hrp.AssemblyAngularVelocity = Vector3.zero
+		end)
+	end
 	cancelManualDeliverAssist()
 	espFlags.players, espFlags.eggs, espFlags.beasts = false, false, false
 	clearEsp()
