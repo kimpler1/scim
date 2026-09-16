@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V56
+  VER: V57
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V56"
+local GLITCH_CORE_VER = "V57"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -1145,6 +1145,21 @@ local function returnToBase(speed, opts)
 	return stealAlong(buildStealPath(hrp.Position, base), speed, opts)
 end
 
+-- The game's streamed area and its movement lane are not reliable while the
+-- player is still inside their plot.  Leave the base first, without selecting
+-- an egg, so every farm mode can scan and travel immediately afterwards.
+local function leaveBaseForFarm()
+	local hrp = getHRP()
+	local base = getBasePos()
+	if not (hrp and base) then return false end
+	local atBase = isInPlot() or (hrp.Position - base).Magnitude <= 85
+	if not atBase then return true end
+	local forest = getBiomeCenter("Forest") or BIOME_CENTERS.Forest
+	if not forest then return true end
+	setStatus("Leave base -> Forest")
+	return stealAlong(buildStealPath(hrp.Position, forest), CFG.approachSpeed)
+end
+
 local function findEggByUid(uid)
 	if not uid then return nil end
 	AreaEggs = AreaEggs or ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 1)
@@ -1486,6 +1501,11 @@ local function farmOnce()
 		end
 		if isInPlot() then plantCarriedEggs() end
 		carrying = false
+		return
+	end
+
+	if not leaveBaseForFarm() then
+		setStatus("Base exit abort")
 		return
 	end
 
