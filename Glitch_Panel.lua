@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V40
+  VER: V41
 ]]
 
-local GLITCH_UI_VER = "V40"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v40"
+local GLITCH_UI_VER = "V41"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v41"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -280,6 +280,17 @@ sidebar.BorderSizePixel = 0
 sidebar.Parent = body
 corner(sidebar, 22)
 
+-- Square off only the inner edge: the sidebar stays rounded on the outer left,
+-- while it joins the content as one continuous surface in the middle.
+local sidebarJoin = Instance.new("Frame")
+sidebarJoin.Size = UDim2.new(1, -22, 1, 0)
+sidebarJoin.Position = UDim2.fromOffset(22, 0)
+sidebarJoin.BackgroundColor3 = SIDE
+sidebarJoin.BackgroundTransparency = 0.08
+sidebarJoin.BorderSizePixel = 0
+sidebarJoin.ZIndex = 0
+sidebarJoin.Parent = sidebar
+
 local sideScroll = Instance.new("ScrollingFrame")
 sideScroll.Size = UDim2.new(1, 0, 1, -8)
 sideScroll.Position = UDim2.fromOffset(0, 8)
@@ -303,6 +314,16 @@ content.BorderSizePixel = 0
 content.ClipsDescendants = true
 content.Parent = body
 corner(content, 22)
+
+-- Mirror the sidebar join on the content's inner edge. Only its outer right
+-- edge remains rounded, so no dark gap appears between the two panels.
+local contentJoin = Instance.new("Frame")
+contentJoin.Size = UDim2.new(1, -22, 1, 0)
+contentJoin.BackgroundColor3 = GLASS2
+contentJoin.BackgroundTransparency = 0.35
+contentJoin.BorderSizePixel = 0
+contentJoin.ZIndex = 0
+contentJoin.Parent = content
 
 local function makePage(name)
 	local f = Instance.new("ScrollingFrame")
@@ -586,23 +607,6 @@ navItem("Main", "Main")
 navItem("ESP", "ESP")
 navItem("Player", "Player")
 
--- MAIN
-local farmToggle
-farmToggle = makeToggle(mainPage, "Auto Steal Egg", false, function(on)
-	if not loadCore() then
-		farmToggle.set(false)
-		return
-	end
-	pushConfig()
-	autoOn = on
-	if on then
-		coreApi.startFarm()
-	else
-		coreApi.stopFarm()
-		setStatus("Auto off")
-	end
-end)
-
 local zoneRow = glassRow(mainPage, 34)
 biomeLbl = Instance.new("TextLabel")
 biomeLbl.BackgroundTransparency = 1
@@ -638,6 +642,24 @@ nextB.BackgroundColor3 = Color3.fromRGB(45, 42, 70)
 nextB.BorderSizePixel = 0
 nextB.Parent = zoneRow
 corner(nextB, 8)
+
+-- The existing V18/V37 farm loops through the eggs for the selected location.
+-- This control only names that behavior; it does not alter the farm path.
+local farmToggle
+farmToggle = makeToggle(mainPage, "Steal All Eggs", false, function(on)
+	if not loadCore() then
+		farmToggle.set(false)
+		return
+	end
+	pushConfig()
+	autoOn = on
+	if on then
+		coreApi.startFarm()
+	else
+		coreApi.stopFarm()
+		setStatus("Auto off")
+	end
+end)
 
 prevB.MouseButton1Click:Connect(function()
 	selectedBiome = selectedBiome <= 1 and #BIOMES or (selectedBiome - 1)
