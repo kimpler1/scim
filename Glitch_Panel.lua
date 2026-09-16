@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V43
+  VER: V44
 ]]
 
-local GLITCH_UI_VER = "V43"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v43"
+local GLITCH_UI_VER = "V44"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v44"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -267,8 +267,8 @@ end
 
 -- Body
 local body = Instance.new("Frame")
-body.Size = UDim2.new(1, 0, 1, -44)
-body.Position = UDim2.fromOffset(0, 44)
+body.Size = UDim2.new(1, 0, 1, -48)
+body.Position = UDim2.fromOffset(0, 48)
 body.BackgroundTransparency = 1
 body.Parent = win
 
@@ -647,7 +647,7 @@ nextB.Parent = zoneRow
 corner(nextB, 8)
 
 local functionGap = Instance.new("Frame")
-functionGap.Size = UDim2.new(1, 0, 0, 5)
+functionGap.Size = UDim2.new(1, 0, 0, 2)
 functionGap.BackgroundTransparency = 1
 functionGap.BorderSizePixel = 0
 functionGap.Parent = mainPage
