@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V42
+  VER: V43
 ]]
 
-local GLITCH_UI_VER = "V42"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v42"
+local GLITCH_UI_VER = "V43"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v43"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -280,16 +280,17 @@ sidebar.BorderSizePixel = 0
 sidebar.Parent = body
 corner(sidebar, 22)
 
--- Square off only the inner edge: the sidebar stays rounded on the outer left,
--- while it joins the content as one continuous surface in the middle.
-local sidebarJoin = Instance.new("Frame")
-sidebarJoin.Size = UDim2.new(1, -22, 1, 0)
-sidebarJoin.Position = UDim2.fromOffset(22, 0)
-sidebarJoin.BackgroundColor3 = SIDE
-sidebarJoin.BackgroundTransparency = 0
-sidebarJoin.BorderSizePixel = 0
-sidebarJoin.ZIndex = 0
-sidebarJoin.Parent = sidebar
+-- Fill just the two inner corner cutouts, avoiding a second full-size layer.
+for _, y in ipairs({ 0, -22 }) do
+	local join = Instance.new("Frame")
+	join.Size = UDim2.fromOffset(22, 22)
+	join.Position = UDim2.new(1, -22, y == 0 and 0 or 1, y)
+	join.BackgroundColor3 = SIDE
+	join.BackgroundTransparency = 0
+	join.BorderSizePixel = 0
+	join.ZIndex = 0
+	join.Parent = sidebar
+end
 
 local sideScroll = Instance.new("ScrollingFrame")
 sideScroll.Size = UDim2.new(1, 0, 1, -8)
@@ -308,22 +309,24 @@ sideList.Parent = sideScroll
 local content = Instance.new("Frame")
 content.Size = UDim2.new(1, -132, 1, 0)
 content.Position = UDim2.fromOffset(132, 0)
-content.BackgroundColor3 = SIDE
-content.BackgroundTransparency = 0
+content.BackgroundColor3 = GLASS2
+content.BackgroundTransparency = 0.25
 content.BorderSizePixel = 0
 content.ClipsDescendants = true
 content.Parent = body
 corner(content, 22)
 
--- Mirror the sidebar join on the content's inner edge. Only its outer right
--- edge remains rounded, so no dark gap appears between the two panels.
-local contentJoin = Instance.new("Frame")
-contentJoin.Size = UDim2.new(1, -22, 1, 0)
-contentJoin.BackgroundColor3 = SIDE
-contentJoin.BackgroundTransparency = 0
-contentJoin.BorderSizePixel = 0
-contentJoin.ZIndex = 0
-contentJoin.Parent = content
+-- Mirror the two small join pieces at the content's inner edge.
+for _, y in ipairs({ 0, -22 }) do
+	local join = Instance.new("Frame")
+	join.Size = UDim2.fromOffset(22, 22)
+	join.Position = UDim2.new(0, 0, y == 0 and 0 or 1, y)
+	join.BackgroundColor3 = GLASS2
+	join.BackgroundTransparency = 0.25
+	join.BorderSizePixel = 0
+	join.ZIndex = 0
+	join.Parent = content
+end
 
 local function makePage(name)
 	local f = Instance.new("ScrollingFrame")
@@ -642,6 +645,12 @@ nextB.BackgroundColor3 = Color3.fromRGB(45, 42, 70)
 nextB.BorderSizePixel = 0
 nextB.Parent = zoneRow
 corner(nextB, 8)
+
+local functionGap = Instance.new("Frame")
+functionGap.Size = UDim2.new(1, 0, 0, 5)
+functionGap.BackgroundTransparency = 1
+functionGap.BorderSizePixel = 0
+functionGap.Parent = mainPage
 
 -- The existing V18/V37 farm loops through the eggs for the selected location.
 -- This control only names that behavior; it does not alter the farm path.
