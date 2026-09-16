@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V45
+  VER: V46
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V45"
+local GLITCH_CORE_VER = "V46"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -78,6 +78,7 @@ local stealValidated = false
 local wasCarryingEdge = false
 local acInstalled = false
 local acStatus = "off"
+local lastScanInfo = "slots=0 snap=0"
 
 local function setStatus(t)
 	CFG.status(t)
@@ -570,6 +571,9 @@ local function getBiomeCenter(name)
 end
 
 local function eggPos(egg)
+	if typeof(egg) == "table" then
+		return egg.Position
+	end
 	local part = egg:FindFirstChild("Hitbox")
 		or egg:FindFirstChild("CustomBoundingBox")
 		or egg:FindFirstChildWhichIsA("BasePart", true)
@@ -629,35 +633,40 @@ local function nearestEggInBiome()
 	-- The game can replace this client folder after a failed pickup. Re-resolve it
 	-- on every scan so a stale instance cannot lead to a false "No eggs" state.
 	AreaEggs = ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 3)
-	if not AreaEggs then return nil end
 	local hrp = getHRP()
 	if not hrp then return nil end
 	local biome = CFG.biomes[CFG.biomeIndex]
 	local center = getBiomeCenter(biome) or BIOME_CENTERS[biome]
 	local recs = recordsByUid()
+	local slotCount = AreaEggs and #AreaEggs:GetChildren() or 0
+	local snapCount = 0
+	for _ in pairs(recs) do snapCount = snapCount + 1 end
+	lastScanInfo = ("slots=%d snap=%d"):format(slotCount, snapCount)
 	local best, bestDist
 	local fallback, fallbackDist
-	for _, egg in ipairs(AreaEggs:GetChildren()) do
-		local rec = recs[egg.Name]
-		local pos = eggPos(egg)
-		if not pos then
-			-- skip
-		elseif eggInSelectedBiome(egg, rec) then
-			local d = (pos - hrp.Position).Magnitude
-			if not bestDist or d < bestDist then
-				best, bestDist = egg, d
-			end
-		elseif center and nearBiomeCenter(pos, biome) then
-			local d = (pos - center).Magnitude
-			if not fallbackDist or d < fallbackDist then
-				fallback, fallbackDist = egg, d
+	if AreaEggs then
+		for _, egg in ipairs(AreaEggs:GetChildren()) do
+			local rec = recs[egg.Name]
+			local pos = eggPos(egg)
+			if not pos then
+				-- skip
+			elseif eggInSelectedBiome(egg, rec) then
+				local d = (pos - hrp.Position).Magnitude
+				if not bestDist or d < bestDist then
+					best, bestDist = egg, d
+				end
+			elseif center and nearBiomeCenter(pos, biome) then
+				local d = (pos - center).Magnitude
+				if not fallbackDist or d < fallbackDist then
+					fallback, fallbackDist = egg, d
+				end
 			end
 		end
 	end
 	if best then return best, bestDist end
 	-- Last resort: any egg near hard-coded biome X corridor
 	if fallback then return fallback, fallbackDist end
-	if center then
+	if AreaEggs and center then
 		for _, egg in ipairs(AreaEggs:GetChildren()) do
 			local pos = eggPos(egg)
 			if pos and math.abs(pos.X - center.X) < 280 then
@@ -668,11 +677,28 @@ local function nearestEggInBiome()
 			end
 		end
 	end
+	if best then return best, bestDist end
+
+	-- Snapshot fallback: the record is authoritative for UID and position even
+	-- while the matching visual slot is absent or temporarily stale on the client.
+	for uid, rec in pairs(recs) do
+		local cf = rec.BoundsCFrame or rec.BottomCFrame
+		if rec.State == "Slot" and typeof(cf) == "CFrame" then
+			local live = AreaEggs and AreaEggs:FindFirstChild(uid)
+			local candidate = live or { Name = uid, Position = cf.Position, Record = rec }
+			if eggInSelectedBiome(candidate, rec) then
+				local d = (cf.Position - hrp.Position).Magnitude
+				if not bestDist or d < bestDist then
+					best, bestDist = candidate, d
+				end
+			end
+		end
+	end
 	return best, bestDist
 end
 
 local function findPrompt(egg)
-	if egg then
+	if typeof(egg) == "Instance" then
 		for _, d in ipairs(egg:GetDescendants()) do
 			if d:IsA("ProximityPrompt") and d.Enabled then
 				return d
@@ -940,7 +966,7 @@ local function approachAndSteal(egg, speed)
 	return trySteal(egg)
 end
 
--- Exact Best Version V18 guard-hit: stand → Guard sleep 1.4 → full trySteal regrab.
+-- Guard-hit recovery: wait for stand → regrab → immediate escape.
 -- keepGoing: only for manual WS/Fly validate; farm uses autoFarm.
 local function guardHitThenRegrab(egg, keepGoing)
 	if not CFG.guardHit then return isActuallyCarrying() end
@@ -994,7 +1020,7 @@ local function guardHitThenRegrab(egg, keepGoing)
 		task.wait(0.12)
 	end
 	recoverStand()
-	task.wait(0.35)
+	task.wait(0.08)
 
 	local hrp = getHRP()
 	if hrp and (hrp.Position - pos).Magnitude > 14 then
@@ -1003,10 +1029,9 @@ local function guardHitThenRegrab(egg, keepGoing)
 		task.wait(0.3)
 	end
 
-	setStatus("Guard sleep")
-	task.wait(1.4)
-
-	setStatus("Regrab")
+	-- As soon as the character is standing again, regrab and let farmOnce start
+	-- the escape path immediately. Waiting here leaves the player in the guard AOE.
+	setStatus("Stand OK -> regrab")
 	if isActuallyCarrying() then
 		carrying = true
 		return true
@@ -1201,7 +1226,7 @@ local function farmOnce()
 	if not egg then
 		-- Treat an empty client scan as transient: the slot list may still be
 		-- syncing after a failed steal. Never stop the farm on this condition.
-		setStatus("Rescan " .. biome)
+		setStatus("Rescan " .. biome .. " " .. lastScanInfo)
 		AreaEggs = nil
 		task.wait(1.0)
 		return
