@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V37
+  VER: V38
 ]]
 
-local GLITCH_UI_VER = "V37"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v37"
+local GLITCH_UI_VER = "V38"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v38"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -75,7 +75,7 @@ end
 
 local function setBiomeLabel()
 	if biomeLbl then
-		biomeLbl.Text = ("Zone [%d/%d]: %s"):format(selectedBiome, #BIOMES, BIOMES[selectedBiome])
+		biomeLbl.Text = ("%d/%d  ·  %s"):format(selectedBiome, #BIOMES, BIOMES[selectedBiome])
 	end
 end
 
@@ -571,7 +571,6 @@ local mainPage = makePage("Main")
 local espPage = makePage("ESP")
 local playerPage = makePage("Player")
 
-sectionLabel(sideScroll, "Features")
 navItem("Main", "Main")
 navItem("ESP", "ESP")
 navItem("Player", "Player")
@@ -597,56 +596,38 @@ end)
 local zoneRow = glassRow(mainPage, 52)
 biomeLbl = Instance.new("TextLabel")
 biomeLbl.BackgroundTransparency = 1
-biomeLbl.Position = UDim2.fromOffset(14, 0)
-biomeLbl.Size = UDim2.new(1, -28, 1, 0)
+biomeLbl.Position = UDim2.fromOffset(48, 0)
+biomeLbl.Size = UDim2.new(1, -96, 1, 0)
 biomeLbl.Font = Enum.Font.GothamBold
 biomeLbl.TextSize = 14
 biomeLbl.TextColor3 = Color3.fromRGB(255, 210, 110)
-biomeLbl.TextXAlignment = Enum.TextXAlignment.Left
+biomeLbl.TextXAlignment = Enum.TextXAlignment.Center
 biomeLbl.Parent = zoneRow
 setBiomeLabel()
 
-local navRow = glassRow(mainPage, 48)
 local prevB = Instance.new("TextButton")
-prevB.Size = UDim2.new(0.42, 0, 0, 32)
-prevB.Position = UDim2.new(0.05, 0, 0.5, -16)
-prevB.Text = "< Prev"
+prevB.Size = UDim2.fromOffset(34, 34)
+prevB.Position = UDim2.fromOffset(8, 9)
+prevB.Text = "‹"
 prevB.Font = Enum.Font.GothamBold
-prevB.TextSize = 13
+prevB.TextSize = 24
 prevB.TextColor3 = TEXT
 prevB.BackgroundColor3 = Color3.fromRGB(45, 42, 70)
 prevB.BorderSizePixel = 0
-prevB.Parent = navRow
+prevB.Parent = zoneRow
 corner(prevB, 8)
 
 local nextB = Instance.new("TextButton")
-nextB.Size = UDim2.new(0.42, 0, 0, 32)
-nextB.Position = UDim2.new(0.53, 0, 0.5, -16)
-nextB.Text = "Next >"
+nextB.Size = UDim2.fromOffset(34, 34)
+nextB.Position = UDim2.new(1, -42, 0, 9)
+nextB.Text = "›"
 nextB.Font = Enum.Font.GothamBold
-nextB.TextSize = 13
+nextB.TextSize = 24
 nextB.TextColor3 = TEXT
 nextB.BackgroundColor3 = Color3.fromRGB(45, 42, 70)
 nextB.BorderSizePixel = 0
-nextB.Parent = navRow
+nextB.Parent = zoneRow
 corner(nextB, 8)
-
-sectionLabel(mainPage, "Approach  ·  Escape")
-makeNumRow(mainPage, "Approach", "Escape", approachSpeed, escapeSpeed, function(n, box)
-	if n >= 50 and n <= 1000 then
-		approachSpeed = n
-		pushConfig()
-	else
-		box.Text = tostring(approachSpeed)
-	end
-end, function(n, box)
-	if n >= 50 and n <= 1000 then
-		escapeSpeed = n
-		pushConfig()
-	else
-		box.Text = tostring(escapeSpeed)
-	end
-end)
 
 local statusRow = glassRow(mainPage, 90)
 statusLbl = Instance.new("TextLabel")
@@ -685,7 +666,7 @@ makeToggle(espPage, "Eggs", false, function(on)
 	pushConfig()
 	if coreApi.setEspEggs then coreApi.setEspEggs(on) end
 end)
-makeToggle(espPage, "Beasts / Night", false, function(on)
+makeToggle(espPage, "Beasts", false, function(on)
 	if not loadCore() then return end
 	pushConfig()
 	if coreApi.setEspBeasts then coreApi.setEspBeasts(on) end
@@ -702,7 +683,7 @@ eh.TextColor3 = MUTED
 eh.TextWrapped = true
 eh.TextXAlignment = Enum.TextXAlignment.Left
 eh.TextYAlignment = Enum.TextYAlignment.Top
-eh.Text = "Beasts: MonsterParasite + zone guards + night/boss models. Highlight + name/distance."
+eh.Text = "Beasts spawned by night and events. Highlight + name/distance. Guards are excluded."
 eh.Parent = espHint
 
 -- PLAYER
@@ -751,7 +732,7 @@ fh.TextColor3 = MUTED
 fh.TextWrapped = true
 fh.TextXAlignment = Enum.TextXAlignment.Left
 fh.TextYAlignment = Enum.TextYAlignment.Top
-fh.Text = "V37: Failed guard attempts reset cleanly before retrying."
+fh.Text = "V38: Cleaner zones and night/event Beasts ESP."
 fh.Parent = flyHint
 
 -- default page

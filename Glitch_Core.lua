@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V37
+  VER: V38
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V37"
+local GLITCH_CORE_VER = "V38"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -1474,7 +1474,8 @@ local function looksLikeBeast(inst)
 	if not inst or not inst:IsA("Model") then return false end
 	if Players:GetPlayerFromCharacter(inst) then return false end
 	local n = string.lower(inst.Name)
-	if n:find("guard", 1, true) then return true end
+	-- Guards are a separate game mechanic, never an event beast.
+	if n:find("guard", 1, true) or inst:GetAttribute("GuardState") ~= nil then return false end
 	if n:find("beast", 1, true) or n:find("boss", 1, true) or n:find("monster", 1, true) then return true end
 	if n:find("parasite", 1, true) or n:find("dragon", 1, true) or n:find("night", 1, true) then return true end
 	if inst:GetAttribute("IsMonster") or inst:GetAttribute("IsBeast") or inst:GetAttribute("EventBoss") then
@@ -1493,8 +1494,8 @@ end
 local function updateBeastEsp(me, seen)
 	if not espFlags.beasts then return end
 
-	local function consider(model, tag)
-		if not looksLikeBeast(model) and not tag then return end
+	local function consider(model)
+		if not looksLikeBeast(model) then return end
 		local root = beastRoot(model)
 		if not root then return end
 		local pos = root.Position
@@ -1505,37 +1506,12 @@ local function updateBeastEsp(me, seen)
 		pack.hl.Adornee = model
 		pack.bb.Adornee = root
 		local dist = me and math.floor((pos - me.Position).Magnitude) or 0
-		local state = model:GetAttribute("GuardState") or model:GetAttribute("State") or ""
-		pack.label.Text = ("%s%s  ·  %dm"):format(
-			model.Name,
-			state ~= "" and (" [" .. tostring(state) .. "]") or "",
-			dist
-		)
+		pack.label.Text = ("Beast: %s  ·  %dm"):format(model.Name, dist)
 	end
 
-	-- Night / parasite event folder (Oxide)
-	local monFolder = Workspace:FindFirstChild("MonsterParasiteMonsters")
-	if monFolder then
-		for _, m in ipairs(monFolder:GetChildren()) do
-			if m:IsA("Model") then consider(m, true) end
-		end
-	end
-
-	-- Zone guards (Boblo EspGuards) — night beasts often sit in GuardAreas
-	if GuardAreas then
-		for _, area in ipairs(GuardAreas:GetChildren()) do
-			local g = area:FindFirstChild("Guard") or area:FindFirstChild("ForestGuardAuthored")
-			if g and g:IsA("Model") then consider(g, true) end
-			for _, d in ipairs(area:GetDescendants()) do
-				if d:IsA("Model") and looksLikeBeast(d) then
-					consider(d, true)
-				end
-			end
-		end
-	end
-
-	-- Loose event models in workspace / __OBJECTS / __DEBRIS
+	-- Night/event folders can nest their spawned beast models one or more levels deep.
 	local roots = {
+		Workspace:FindFirstChild("MonsterParasiteMonsters"),
 		Workspace:FindFirstChild("__OBJECTS"),
 		Workspace:FindFirstChild("__DEBRIS"),
 		Workspace:FindFirstChild("Events"),
@@ -1545,8 +1521,11 @@ local function updateBeastEsp(me, seen)
 	for _, root in ipairs(roots) do
 		if root then
 			for _, m in ipairs(root:GetChildren()) do
-				if m:IsA("Model") and looksLikeBeast(m) then
-					consider(m, true)
+				if m:IsA("Model") then consider(m) end
+			end
+			if root ~= Workspace then
+				for _, m in ipairs(root:GetDescendants()) do
+					if m:IsA("Model") then consider(m) end
 				end
 			end
 		end
