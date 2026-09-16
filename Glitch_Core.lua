@@ -1,15 +1,15 @@
 --[[
   Glitch Core — Steal An Egg
-  Farm: exact Best Version V18 (guard sleep 1.4 + full trySteal regrab).
+  Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V36
+  VER: V37
   FROZEN (LO 2026-09-16):
-    - Autofarm = Best Version V18 guardHitThenRegrab / peelThenEscape / farmOnce
+    - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V36"
+local GLITCH_CORE_VER = "V37"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -52,6 +52,8 @@ local CFG = {
 	biomeRadiusX = 220,
 	biomeRadiusZ = 140,
 	guardHit = true, -- Oxide: steal -> get hit -> stand -> regrab -> return (fixes Delivery failed)
+	retryRecoveryWait = 4.0,
+	retryAttempts = 3,
 	status = function() end,
 }
 
@@ -1011,10 +1013,8 @@ local function guardHitThenRegrab(egg, keepGoing)
 	if trySteal(reclaim) then
 		return true
 	end
-	reclaim = findReclaimEgg() or findEggByUid(lastEggUid) or reclaim
-	if reclaim and approachAndSteal(reclaim, CFG.approachSpeed) then
-		return true
-	end
+	-- Do not reclaim immediately in the guard's attack zone. farmOnce will reset,
+	-- wait for recovery, and begin the complete attempt again from a clean state.
 	return isActuallyCarrying()
 end
 
@@ -1138,18 +1138,7 @@ local function peelThenEscape()
 	if not peelOk and not isActuallyCarrying() then
 		carrying = false
 		setStatus("Egg lost")
-		local reclaim = findReclaimEgg() or findEggByUid(lastEggUid)
-		if reclaim and approachAndSteal(reclaim, CFG.approachSpeed) then
-			hrp = getHRP()
-			if not hrp then return false end
-			setStatus("Peel")
-			stealMoveTo(hrp.Position.X, getLaneZ(), CFG.escapeSpeed, {
-				requireCarry = true,
-				elevated = true,
-			})
-		else
-			return false
-		end
+		return false
 	end
 
 	setStatus("Escape")
@@ -1157,23 +1146,20 @@ local function peelThenEscape()
 	if not escaped and not isActuallyCarrying() then
 		carrying = false
 		setStatus("Egg lost")
-		local reclaim = findReclaimEgg() or findEggByUid(lastEggUid)
-		if reclaim and approachAndSteal(reclaim, CFG.approachSpeed) then
-			hrp = getHRP()
-			if hrp then
-				setStatus("Peel")
-				stealMoveTo(hrp.Position.X, getLaneZ(), CFG.escapeSpeed, {
-					requireCarry = true,
-					elevated = true,
-				})
-			end
-			setStatus("Escape")
-			escaped = returnToBase(CFG.escapeSpeed, { requireCarry = true, elevated = true })
-		else
-			return false
-		end
+		return false
 	end
 	return escaped ~= false or isActuallyCarrying() or isInPlot()
+end
+
+local function resetFarmAttempt()
+	carrying = false
+	setStatus("Reset 4")
+	local untilT = tick() + (CFG.retryRecoveryWait or 4.0)
+	while tick() < untilT and autoFarm do
+		recoverStand()
+		task.wait(0.12)
+	end
+	recoverStand()
 end
 
 local function farmOnce()
@@ -1231,15 +1217,34 @@ local function farmOnce()
 		return
 	end
 
-	-- Delivery failed fix: let guard hit once, stand, regrab, then escape
-	guardHitThenRegrab(egg)
-	if not isActuallyCarrying() then
-		setStatus("Lost after hit")
-		task.wait(0.3)
+	-- A failed regrab or escape must not immediately retry inside the guard zone.
+	-- Reset first, then re-approach the egg and run the full guard sequence again.
+	local escaped = false
+	local attemptEgg = egg
+	for attempt = 1, (CFG.retryAttempts or 3) do
+		if attempt > 1 then
+			resetFarmAttempt()
+			if not autoFarm then return end
+			attemptEgg = findReclaimEgg() or findEggByUid(lastEggUid) or nearestEggInBiome()
+			if not attemptEgg or not approachAndSteal(attemptEgg, CFG.approachSpeed) then
+				setStatus("Retry miss " .. tostring(attempt))
+				continue
+			end
+		end
+
+		if guardHitThenRegrab(attemptEgg) and isActuallyCarrying() then
+			if peelThenEscape() then
+				escaped = true
+				break
+			end
+		end
+		carrying = false
+	end
+	if not escaped then
+		setStatus("Lost after retries")
 		return
 	end
 
-	peelThenEscape()
 	setStatus("Bank")
 	local bankUntil = tick() + CFG.baseWait + 2
 	while tick() < bankUntil and autoFarm do
