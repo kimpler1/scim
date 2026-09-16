@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V55
+  VER: V56
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V55"
+local GLITCH_CORE_VER = "V56"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -809,17 +809,26 @@ local function selectFarmEgg()
 	return nearestEggInBiome()
 end
 
-local function isDescendantOf(child, ancestor)
-	if not (child and ancestor) then return false end
-	return child == ancestor or child:IsDescendantOf(ancestor)
-end
-
 local function promptPart(prompt)
 	local parent = prompt and prompt.Parent
 	while parent and parent ~= Workspace do
 		if parent:IsA("BasePart") then return parent end
 		parent = parent.Parent
 	end
+end
+
+local function isAtLiveNest(position)
+	if not (AreaEggs and position) then return false end
+	-- Prompts are not always parented below their egg model, so hierarchy alone
+	-- cannot identify a nest.  A normal egg's prompt is nevertheless at the
+	-- exact live slot position; a dropped egg is not.
+	for _, slot in ipairs(AreaEggs:GetChildren()) do
+		local slotPos = eggPos(slot)
+		if slotPos and (slotPos - position).Magnitude <= 12 then
+			return true
+		end
+	end
+	return false
 end
 
 local function visibleDroppedCandidates(knownUids)
@@ -833,7 +842,7 @@ local function visibleDroppedCandidates(knownUids)
 			or action:find("carry", 1, true) ~= nil
 			or action:find("pick", 1, true) ~= nil
 			or action:find("grab", 1, true) ~= nil
-		if prompt:IsA("ProximityPrompt") and prompt.Enabled and pickupLike and not isDescendantOf(prompt, AreaEggs) then
+		if prompt:IsA("ProximityPrompt") and prompt.Enabled and pickupLike then
 			local node, holder, uid = prompt, nil, nil
 			while node and node ~= Workspace do
 				local id = node:GetAttribute("Uid") or node:GetAttribute("EggUid")
@@ -847,7 +856,7 @@ local function visibleDroppedCandidates(knownUids)
 				node = node.Parent
 			end
 			local part = (holder and (holder:IsA("BasePart") and holder or holder:FindFirstChildWhichIsA("BasePart", true))) or promptPart(prompt)
-			if part then
+			if part and not isAtLiveNest(part.Position) then
 				if uid then
 					found[uid] = { Name = uid, Position = part.Position, Prompt = prompt }
 				else
