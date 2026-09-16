@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V49
+  VER: V50
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V49"
+local GLITCH_CORE_VER = "V50"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -54,10 +54,11 @@ local CFG = {
 	guardHit = true, -- Oxide: steal -> get hit -> stand -> regrab -> return (fixes Delivery failed)
 	retryRecoveryWait = 4.0,
 	retryAttempts = 3,
+	targetMode = "all",
 	status = function() end,
 }
 
-local EggState, PlotState, SlotIdentity
+local EggState, PlotState, SlotIdentity, AssetsData
 local CarryFn, SnapshotFn, SyncSnapshot, CarrySignal
 local GetRespawn, GetPlot, InPlot, IsFirstUid, BuildSlotKey
 local AreasFolder, GuardAreas, AreaEggs
@@ -114,10 +115,12 @@ local function bindGame()
 	local Client = ch(ReplicatedStorage, "Client", 2)
 	local Shared = ch(ReplicatedStorage, "Shared", 2)
 	local Util = Shared and ch(Shared, "Util", 1)
+	local Data = ch(ReplicatedStorage, "Data", 2)
 
 	EggState = Client and req(Client, "Egg" .. "State", 2)
 	PlotState = Client and req(Client, "Plot" .. "State", 2)
 	SlotIdentity = Util and req(Util, "Area" .. "Egg" .. "Slot" .. "Identity", 1)
+	AssetsData = Data and req(Data, "Assets", 2)
 
 	CarryFn = pick(EggState, "CarryFieldEgg", "RequestCarryAreaEgg")
 	SnapshotFn = pick(EggState, "ReadFieldEggs", "GetAreaEggSnapshot")
@@ -629,7 +632,72 @@ local function eggInSelectedBiome(egg, record)
 	return false
 end
 
-local function nearestEggInBiome()
+local nearestEggInBiome
+
+local RARITY_WEIGHT = {
+	Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5,
+	Mythic = 6, Cosmic = 7, Secret = 8, Eternal = 9, Divine = 10,
+}
+
+local function recordRarity(record)
+	if typeof(record) ~= "table" then return "Common" end
+	local r = record.Rarity
+	if typeof(r) == "string" then return r end
+	if typeof(r) == "table" then return r._id or r.DisplayName or "Common" end
+	local directory = AssetsData and (AssetsData.Directory or AssetsData)
+	local entry = directory and directory[record.AssetCategory or ""]
+	local assetRarity = entry and entry.Rarity
+	if typeof(assetRarity) == "string" then return assetRarity end
+	if typeof(assetRarity) == "table" then return assetRarity._id or assetRarity.DisplayName or "Common" end
+	return "Common"
+end
+
+local function bestEggScore(record, distance)
+	local rarity = recordRarity(record)
+	local score = (RARITY_WEIGHT[rarity] or 0) * 100000000
+	local mutations = typeof(record.Mutations) == "table" and record.Mutations or {}
+	for _, mutation in pairs(mutations) do
+		if mutation == "Rainbow" then score = score + 35000000
+		elseif mutation == "Gold" or mutation == "Golden" then score = score + 20000000
+		elseif mutation == "Silver" then score = score + 10000000
+		elseif mutation == "Parasite" or mutation == "Monstrous" then score = score + 800000000
+		end
+	end
+	if record.HasParasite == true or record.BaseMutation == "Parasite" or record.BaseMutation == "Monstrous" then
+		score = score + 800000000
+	end
+	score = score + (tonumber(record.AssetScale) or 1) * 100000
+	score = score + (tonumber(record.NestScale) or 1) * 50000
+	return score - math.min(distance or 0, 99999), rarity
+end
+
+local function bestEggInBiome()
+	AreaEggs = ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 3)
+	local hrp = getHRP()
+	if not hrp then return nil end
+	local recs = recordsByUid()
+	local best, bestScore, bestRarity
+	for uid, rec in pairs(recs) do
+		local cf = rec.BoundsCFrame or rec.BottomCFrame
+		if rec.State == "Slot" and typeof(cf) == "CFrame" then
+			local live = AreaEggs and AreaEggs:FindFirstChild(uid)
+			local candidate = live or { Name = uid, Position = cf.Position, Record = rec }
+			if eggInSelectedBiome(candidate, rec) then
+				local score, rarity = bestEggScore(rec, (cf.Position - hrp.Position).Magnitude)
+				if not bestScore or score > bestScore then
+					best, bestScore, bestRarity = candidate, score, rarity
+				end
+			end
+		end
+	end
+	if best then
+		setStatus("Best " .. tostring(bestRarity))
+		return best
+	end
+	return nearestEggInBiome()
+end
+
+nearestEggInBiome = function()
 	-- The game can replace this client folder after a failed pickup. Re-resolve it
 	-- on every scan so a stale instance cannot lead to a false "No eggs" state.
 	AreaEggs = ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 3)
@@ -695,6 +763,13 @@ local function nearestEggInBiome()
 		end
 	end
 	return best, bestDist
+end
+
+local function selectFarmEgg()
+	if CFG.targetMode == "best" then
+		return bestEggInBiome()
+	end
+	return nearestEggInBiome()
 end
 
 local function findPrompt(egg)
@@ -920,9 +995,9 @@ local function findEggByUid(uid)
 end
 
 local function findReclaimEgg()
-	AreaEggs = AreaEggs or ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 1)
+	AreaEggs = ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 2)
 	local hrp = getHRP()
-	if not AreaEggs or not hrp then return nil end
+	if not hrp then return nil end
 	local recs = recordsByUid()
 	local radius = CFG.reclaimRadius or 250
 	local best, bestDist, bestPri
@@ -937,15 +1012,25 @@ local function findReclaimEgg()
 		end
 	end
 
-	for _, egg in ipairs(AreaEggs:GetChildren()) do
-		local uid = egg.Name
-		local rec = recs[uid]
-		local isDropped = rec and rec.State == "Dropped"
-		local isLast = lastEggUid and uid == lastEggUid
-		if isLast then
-			consider(egg, 3)
-		elseif isDropped then
-			consider(egg, 2)
+	if AreaEggs then
+		for _, egg in ipairs(AreaEggs:GetChildren()) do
+			local uid = egg.Name
+			local rec = recs[uid]
+			local isDropped = rec and rec.State == "Dropped"
+			local isLast = lastEggUid and uid == lastEggUid
+			if isLast then
+				consider(egg, 3)
+			elseif isDropped then
+				consider(egg, 2)
+			end
+		end
+	end
+	-- A knocked egg can be visible in the snapshot before its client model arrives.
+	for uid, rec in pairs(recs) do
+		local cf = rec.BoundsCFrame or rec.BottomCFrame
+		if rec.State == "Dropped" and typeof(cf) == "CFrame" then
+			local live = AreaEggs and AreaEggs:FindFirstChild(uid)
+			consider(live or { Name = uid, Position = cf.Position, Record = rec }, uid == lastEggUid and 4 or 2)
 		end
 	end
 	return best
@@ -1157,7 +1242,7 @@ local function ensureDeliverAssist()
 	table.insert(connections, deliverAssistConn)
 end
 
-local function peelThenEscape()
+local function peelThenEscape(reclaimDepth)
 	local hrp = getHRP()
 	if not hrp then return false end
 	setStatus("Peel")
@@ -1172,6 +1257,15 @@ local function peelThenEscape()
 	if not peelOk and not isActuallyCarrying() then
 		carrying = false
 		setStatus("Egg lost")
+		if (reclaimDepth or 0) < 1 then
+			local dropped = findReclaimEgg()
+			if dropped then
+				setStatus("Drop -> reclaim")
+				if approachAndSteal(dropped, CFG.approachSpeed) then
+					return peelThenEscape((reclaimDepth or 0) + 1)
+				end
+			end
+		end
 		return false
 	end
 
@@ -1180,6 +1274,15 @@ local function peelThenEscape()
 	if not escaped and not isActuallyCarrying() then
 		carrying = false
 		setStatus("Egg lost")
+		if (reclaimDepth or 0) < 1 then
+			local dropped = findReclaimEgg()
+			if dropped then
+				setStatus("Drop -> reclaim")
+				if approachAndSteal(dropped, CFG.approachSpeed) then
+					return peelThenEscape((reclaimDepth or 0) + 1)
+				end
+			end
+		end
 		return false
 	end
 	return escaped ~= false or isActuallyCarrying() or isInPlot()
@@ -1229,7 +1332,7 @@ local function farmOnce()
 		end
 	end
 
-	local egg = nearestEggInBiome()
+	local egg = selectFarmEgg()
 	if not egg then
 		-- Treat an empty client scan as transient: the slot list may still be
 		-- syncing after a failed steal. Never stop the farm on this condition.
@@ -1264,7 +1367,7 @@ local function farmOnce()
 		if attempt > 1 then
 			resetFarmAttempt()
 			if not autoFarm then return end
-			attemptEgg = findReclaimEgg() or findEggByUid(lastEggUid) or nearestEggInBiome()
+			attemptEgg = findReclaimEgg() or findEggByUid(lastEggUid) or selectFarmEgg()
 			if not attemptEgg or not approachAndSteal(attemptEgg, CFG.approachSpeed) then
 				setStatus("Retry miss " .. tostring(attempt))
 				continue
@@ -2000,6 +2103,7 @@ function Api.setConfig(t)
 	if t.biomes then CFG.biomes = t.biomes end
 	if t.approachSpeed then CFG.approachSpeed = math.clamp(t.approachSpeed, 50, 1000) end
 	if t.escapeSpeed then CFG.escapeSpeed = math.clamp(t.escapeSpeed, 50, 1000) end
+	if t.targetMode == "all" or t.targetMode == "best" then CFG.targetMode = t.targetMode end
 	if typeof(t.status) == "function" then CFG.status = t.status end
 end
 

@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V49
+  VER: V50
 ]]
 
-local GLITCH_UI_VER = "V49"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v49"
+local GLITCH_UI_VER = "V50"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v50"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -27,6 +27,7 @@ local BIOMES = {
 }
 
 local selectedBiome = 1
+local targetMode = "all"
 local approachSpeed, escapeSpeed = 250, 480
 local walkSpeedVal, flySpeedVal = 32, 60
 local autoOn = false
@@ -115,9 +116,10 @@ local function pushConfig()
 		coreApi.setConfig({
 			biomeIndex = selectedBiome,
 			biomes = BIOMES,
-			approachSpeed = approachSpeed,
-			escapeSpeed = escapeSpeed,
-			status = setStatus,
+		approachSpeed = approachSpeed,
+		escapeSpeed = escapeSpeed,
+		targetMode = targetMode,
+		status = setStatus,
 		})
 	end
 end
@@ -656,19 +658,40 @@ functionGap.BackgroundTransparency = 1
 functionGap.BorderSizePixel = 0
 functionGap.Parent = mainPage
 
--- The existing V18/V37 farm loops through the eggs for the selected location.
--- This control only names that behavior; it does not alter the farm path.
-local farmToggle
-farmToggle = makeToggle(mainPage, "Steal All Eggs", false, function(on)
+local allEggsToggle, bestEggToggle
+allEggsToggle = makeToggle(mainPage, "Steal All Eggs", false, function(on)
 	if not loadCore() then
-		farmToggle.set(false)
+		allEggsToggle.set(false)
 		return
+	end
+	if on then
+		targetMode = "all"
+		if bestEggToggle then bestEggToggle.set(false) end
 	end
 	pushConfig()
 	autoOn = on
 	if on then
 		coreApi.startFarm()
-	else
+	elseif targetMode == "all" then
+		coreApi.stopFarm()
+		setStatus("Auto off")
+	end
+end)
+
+bestEggToggle = makeToggle(mainPage, "Steal Best Egg", false, function(on)
+	if not loadCore() then
+		bestEggToggle.set(false)
+		return
+	end
+	if on then
+		targetMode = "best"
+		if allEggsToggle then allEggsToggle.set(false) end
+	end
+	pushConfig()
+	autoOn = on
+	if on then
+		coreApi.startFarm()
+	elseif targetMode == "best" then
 		coreApi.stopFarm()
 		setStatus("Auto off")
 	end
