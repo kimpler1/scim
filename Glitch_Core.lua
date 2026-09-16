@@ -1,15 +1,15 @@
 --[[
   Glitch Core — Steal An Egg
-  Farm: V18 base + live guard-idle wait with Titan Temple fallback.
+  Farm: V18 base + Titan Temple recover-before-regrab timing.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V34
+  VER: V35
   FROZEN (LO 2026-09-16):
-    - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with guard-home confirmation
+    - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with Titan recovery gate
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V34"
+local GLITCH_CORE_VER = "V35"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -52,7 +52,7 @@ local CFG = {
 	biomeRadiusX = 220,
 	biomeRadiusZ = 140,
 	guardHit = true, -- Oxide: steal -> get hit -> stand -> regrab -> return (fixes Delivery failed)
-	titanGuardFallback = 3.2, -- giant guard's delayed ground hit outlasts the normal 1.4 s fallback
+	titanRecoveryWait = 4.5, -- let the giant's full hit/ragdoll sequence finish before the second grab
 	status = function() end,
 }
 
@@ -1002,7 +1002,7 @@ end
 
 local function waitForGuardIdle(biome, pos, alive)
 	local guard = findGuardForEgg(biome, pos)
-	local unknownFallback = biome == "Titan Temple" and (CFG.titanGuardFallback or 3.2) or 1.4
+	local unknownFallback = biome == "Titan Temple" and (CFG.titanRecoveryWait or 4.5) or 1.4
 	local limit = guard and 4.5 or unknownFallback
 	local t0 = tick()
 	while tick() - t0 < limit and alive() do
@@ -1060,7 +1060,16 @@ local function guardHitThenRegrab(egg, keepGoing)
 		return true
 	end
 
-	task.wait(0.55)
+	local biome = CFG.biomes[CFG.biomeIndex]
+	local titanRecover = biome == "Titan Temple" and wasHit
+	if titanRecover then
+		-- The giant's delayed ground smash can re-hit while the humanoid is still rising.
+		-- Do not attempt the second grab until the entire recovery window has elapsed.
+		setStatus("Recover 4.5")
+		task.wait(CFG.titanRecoveryWait or 4.5)
+	else
+		task.wait(0.55)
+	end
 	setStatus("Stand")
 	local tStand = tick()
 	while tick() - tStand < 3.0 and alive() do
@@ -1069,7 +1078,9 @@ local function guardHitThenRegrab(egg, keepGoing)
 		task.wait(0.12)
 	end
 	recoverStand()
-	task.wait(0.35)
+	if not titanRecover then
+		task.wait(0.35)
+	end
 
 	local hrp = getHRP()
 	if hrp and (hrp.Position - pos).Magnitude > 14 then
@@ -1078,10 +1089,12 @@ local function guardHitThenRegrab(egg, keepGoing)
 		task.wait(0.3)
 	end
 
-	setStatus("Guard idle")
-	waitForGuardIdle(CFG.biomes[CFG.biomeIndex], pos, alive)
+	if not titanRecover then
+		setStatus("Guard idle")
+		waitForGuardIdle(biome, pos, alive)
+	end
 
-	setStatus("Regrab")
+	setStatus(titanRecover and "Regrab->GO" or "Regrab")
 	if isActuallyCarrying() then
 		carrying = true
 		return true
