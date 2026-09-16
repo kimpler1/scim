@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V44
+  VER: V45
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V44"
+local GLITCH_CORE_VER = "V45"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -626,7 +626,9 @@ local function eggInSelectedBiome(egg, record)
 end
 
 local function nearestEggInBiome()
-	AreaEggs = AreaEggs or ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 1)
+	-- The game can replace this client folder after a failed pickup. Re-resolve it
+	-- on every scan so a stale instance cannot lead to a false "No eggs" state.
+	AreaEggs = ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 3)
 	if not AreaEggs then return nil end
 	local hrp = getHRP()
 	if not hrp then return nil end
@@ -1197,8 +1199,11 @@ local function farmOnce()
 
 	local egg = nearestEggInBiome()
 	if not egg then
-		setStatus("No eggs " .. biome)
-		task.wait(0.5)
+		-- Treat an empty client scan as transient: the slot list may still be
+		-- syncing after a failed steal. Never stop the farm on this condition.
+		setStatus("Rescan " .. biome)
+		AreaEggs = nil
+		task.wait(1.0)
 		return
 	end
 
@@ -1212,8 +1217,10 @@ local function farmOnce()
 
 	setStatus("Grab")
 	if not trySteal(egg) then
-		setStatus("Miss")
-		task.wait(0.25)
+		setStatus("Miss -> reset")
+		lastEggUid, lastEggPos = nil, nil
+		AreaEggs = nil
+		resetFarmAttempt()
 		return
 	end
 
@@ -1241,7 +1248,10 @@ local function farmOnce()
 		carrying = false
 	end
 	if not escaped then
-		setStatus("Lost after retries")
+		setStatus("Lost -> reset")
+		lastEggUid, lastEggPos = nil, nil
+		AreaEggs = nil
+		resetFarmAttempt()
 		return
 	end
 

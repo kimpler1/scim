@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V44
+  VER: V45
 ]]
 
-local GLITCH_UI_VER = "V44"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v44"
+local GLITCH_UI_VER = "V45"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v45"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -32,6 +32,7 @@ local walkSpeedVal, flySpeedVal = 32, 60
 local autoOn = false
 local coreApi, coreLoaded = nil, false
 local statusLbl, biomeLbl
+local debugLines = {}
 local pages = {}
 local navBtns = {}
 local currentPage = "Main"
@@ -70,7 +71,10 @@ local function mountGui(gui)
 end
 
 local function setStatus(t)
-	if statusLbl then statusLbl.Text = tostring(t) end
+	local text = tostring(t)
+	table.insert(debugLines, text)
+	while #debugLines > 3 do table.remove(debugLines, 1) end
+	if statusLbl then statusLbl.Text = table.concat(debugLines, "\n") end
 end
 
 local function setBiomeLabel()
@@ -669,6 +673,20 @@ farmToggle = makeToggle(mainPage, "Steal All Eggs", false, function(on)
 		setStatus("Auto off")
 	end
 end)
+
+-- Temporary on-panel console: shows the three most recent farm states.
+local debugRow = glassRow(mainPage, 52)
+statusLbl = Instance.new("TextLabel")
+statusLbl.BackgroundTransparency = 1
+statusLbl.Position = UDim2.fromOffset(12, 5)
+statusLbl.Size = UDim2.new(1, -24, 1, -10)
+statusLbl.Font = Enum.Font.Gotham
+statusLbl.TextSize = 10
+statusLbl.TextColor3 = MUTED
+statusLbl.TextXAlignment = Enum.TextXAlignment.Left
+statusLbl.TextYAlignment = Enum.TextYAlignment.Top
+statusLbl.Text = #debugLines > 0 and table.concat(debugLines, "\n") or "Debug · idle"
+statusLbl.Parent = debugRow
 
 prevB.MouseButton1Click:Connect(function()
 	selectedBiome = selectedBiome <= 1 and #BIOMES or (selectedBiome - 1)
