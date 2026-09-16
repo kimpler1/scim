@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V52
+  VER: V53
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V52"
+local GLITCH_CORE_VER = "V53"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -809,6 +809,39 @@ local function selectFarmEgg()
 	return nearestEggInBiome()
 end
 
+-- Recovery mode deliberately considers only server records marked Dropped.
+-- Higher zone index wins first; rarity/mutation/size choose between drops in
+-- the same zone, then distance breaks a remaining tie.
+local function findDroppedEggGlobal()
+	AreaEggs = ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 3)
+	local hrp = getHRP()
+	if not hrp then return nil end
+	local best, bestScore, bestZone
+	for uid, rec in pairs(recordsByUid()) do
+		local cf = rec.BoundsCFrame or rec.BottomCFrame
+		if rec.State == "Dropped" and typeof(cf) == "CFrame" then
+			local zoneIndex = 0
+			for i, biomeName in ipairs(CFG.biomes) do
+				if matchesBiome(rec.AreaId, biomeName) then
+					zoneIndex = i
+					break
+				end
+			end
+			local live = AreaEggs and AreaEggs:FindFirstChild(uid)
+			local candidate = live or { Name = uid, Position = cf.Position, Record = rec }
+			local eggScore = bestEggScore(rec, (cf.Position - hrp.Position).Magnitude)
+			local score = zoneIndex * 1000000000000 + eggScore
+			if not bestScore or score > bestScore then
+				best, bestScore, bestZone = candidate, score, zoneIndex
+			end
+		end
+	end
+	if best then
+		setStatus(("Dropped %d/%d -> reclaim"):format(bestZone, #CFG.biomes))
+	end
+	return best
+end
+
 local function findPrompt(egg)
 	if typeof(egg) == "Instance" then
 		for _, d in ipairs(egg:GetDescendants()) do
@@ -1369,24 +1402,34 @@ local function farmOnce()
 	end
 
 	local biome = CFG.biomes[CFG.biomeIndex]
-	local center = getBiomeCenter(biome)
-	local hrp = getHRP()
-	if center and hrp and (hrp.Position - center).Magnitude > 120 then
-		setStatus("To " .. biome)
-		if not stealAlong(buildStealPath(hrp.Position, center), CFG.approachSpeed) then
-			setStatus("Move abort")
+	local egg
+	if CFG.targetMode == "dropped" then
+		egg = findDroppedEggGlobal()
+		if not egg then
+			setStatus("No dropped eggs — rescan")
+			AreaEggs = nil
+			task.wait(1.0)
 			return
 		end
-	end
-
-	local egg = selectFarmEgg()
-	if not egg then
-		-- Treat an empty client scan as transient: the slot list may still be
-		-- syncing after a failed steal. Never stop the farm on this condition.
-		setStatus("Rescan " .. biome .. " " .. lastScanInfo)
-		AreaEggs = nil
-		task.wait(1.0)
-		return
+	else
+		local center = getBiomeCenter(biome)
+		local hrp = getHRP()
+		if center and hrp and (hrp.Position - center).Magnitude > 120 then
+			setStatus("To " .. biome)
+			if not stealAlong(buildStealPath(hrp.Position, center), CFG.approachSpeed) then
+				setStatus("Move abort")
+				return
+			end
+		end
+		egg = selectFarmEgg()
+		if not egg then
+			-- Treat an empty client scan as transient: the slot list may still be
+			-- syncing after a failed steal. Never stop the farm on this condition.
+			setStatus("Rescan " .. biome .. " " .. lastScanInfo)
+			AreaEggs = nil
+			task.wait(1.0)
+			return
+		end
 	end
 
 	local pos = eggPos(egg)
@@ -1421,7 +1464,9 @@ local function farmOnce()
 			end
 		end
 
-		if guardHitThenRegrab(attemptEgg) and isActuallyCarrying() then
+		-- A ground drop has already left its nest: do not wait for a new guard
+		-- hit.  Carry it straight into the existing immediate-escape path.
+		if (CFG.targetMode == "dropped" or guardHitThenRegrab(attemptEgg)) and isActuallyCarrying() then
 			if peelThenEscape() then
 				escaped = true
 				break
@@ -2150,7 +2195,7 @@ function Api.setConfig(t)
 	if t.biomes then CFG.biomes = t.biomes end
 	if t.approachSpeed then CFG.approachSpeed = math.clamp(t.approachSpeed, 50, 1000) end
 	if t.escapeSpeed then CFG.escapeSpeed = math.clamp(t.escapeSpeed, 50, 1000) end
-	if t.targetMode == "all" or t.targetMode == "best" then CFG.targetMode = t.targetMode end
+	if t.targetMode == "all" or t.targetMode == "best" or t.targetMode == "dropped" then CFG.targetMode = t.targetMode end
 	if typeof(t.status) == "function" then CFG.status = t.status end
 end
 

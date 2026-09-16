@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V52
+  VER: V53
 ]]
 
-local GLITCH_UI_VER = "V52"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v52"
+local GLITCH_UI_VER = "V53"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v53"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -659,7 +659,7 @@ functionGap.BackgroundTransparency = 1
 functionGap.BorderSizePixel = 0
 functionGap.Parent = mainPage
 
-local allEggsToggle, bestEggToggle
+local allEggsToggle, bestEggToggle, droppedEggsToggle
 allEggsToggle = makeToggle(mainPage, "Steal All Eggs", false, function(on)
 	if not loadCore() then
 		allEggsToggle.set(false)
@@ -668,6 +668,7 @@ allEggsToggle = makeToggle(mainPage, "Steal All Eggs", false, function(on)
 	if on then
 		targetMode = "all"
 		if bestEggToggle then bestEggToggle.set(false) end
+		if droppedEggsToggle then droppedEggsToggle.set(false) end
 	end
 	pushConfig()
 	autoOn = on
@@ -687,12 +688,33 @@ bestEggToggle = makeToggle(mainPage, "Steal Best Egg", false, function(on)
 	if on then
 		targetMode = "best"
 		if allEggsToggle then allEggsToggle.set(false) end
+		if droppedEggsToggle then droppedEggsToggle.set(false) end
 	end
 	pushConfig()
 	autoOn = on
 	if on then
 		coreApi.startFarm()
 	elseif targetMode == "best" then
+		coreApi.stopFarm()
+		setStatus("Auto off")
+	end
+end)
+
+droppedEggsToggle = makeToggle(mainPage, "Recover Dropped Eggs", false, function(on)
+	if not loadCore() then
+		droppedEggsToggle.set(false)
+		return
+	end
+	if on then
+		targetMode = "dropped"
+		if allEggsToggle then allEggsToggle.set(false) end
+		if bestEggToggle then bestEggToggle.set(false) end
+	end
+	pushConfig()
+	autoOn = on
+	if on then
+		coreApi.startFarm()
+	elseif targetMode == "dropped" then
 		coreApi.stopFarm()
 		setStatus("Auto off")
 	end
