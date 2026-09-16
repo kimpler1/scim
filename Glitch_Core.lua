@@ -1,14 +1,15 @@
 --[[
   Glitch Core — Steal An Egg
   Farm: Quest V18 lineage. ESP + Walk/Fly + Oxide Evidence scrub.
-  VER: V25
+  VER: V26
   FROZEN (LO 2026-09-15):
-    - Autofarm: farmOnce / guardHitThenRegrab / peelThenEscape
+    - Autofarm target: nearestEggInBiome (do not switch to rarest)
     - WS + Fly: scrub @0.2s cached, unanchored velocity fly, WS loop
-    Manual WS/Fly steal: 1 guard hit → 2nd grab → base (do not auto-freeze/validate)
+  V26: peel ASAP after regrab (longer escape carry-grace, no nest reclaim flicker);
+       hard destroy clears WS/Fly/ESP/farm so reinject starts clean.
 ]]
 
-local GLITCH_CORE_VER = "V25"
+local GLITCH_CORE_VER = "V26"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -60,7 +61,9 @@ local GetRespawn, GetPlot, InPlot, IsFirstUid, BuildSlotKey
 local AreasFolder, GuardAreas, AreaEggs
 local Bound = false
 local autoFarm, carrying, farmBusy = false, false, false
+local destroyed = false
 local connections = {}
+local charAddedConn = nil
 local espFlags = { players = false, eggs = false, beasts = false }
 local espMap = {} -- [key] = { hl, bb, label, kind }
 local espFolder, espConn
@@ -435,7 +438,8 @@ local function stealMoveTo(targetX, targetZ, speed, opts)
 		if not isAlive() then
 			return false
 		end
-		if opts.requireCarry and (tick() - (lastStealAt or 0)) > (CFG.carryGrace or 0.25) then
+		local grace = opts.carryGrace or CFG.carryGrace or 0.25
+		if opts.requireCarry and (tick() - (lastStealAt or 0)) > grace then
 			if not isActuallyCarrying() then
 				carrying = false
 				setStatus("Egg lost")
@@ -935,18 +939,18 @@ local function approachAndSteal(egg, speed)
 	return trySteal(egg)
 end
 
--- Fast grab for post-guard regrab — do not sit on nest for full grabDelay
+-- Fast grab for post-guard regrab — exit the INSTANT carry sticks (no nest sit)
 local function tryStealFast(egg)
 	local pos = eggPos(egg)
 	local root = getHRP()
 	if not root or not pos then return false end
 	local targetY = groundedY(pos.X, pos.Z, pos.Y)
 	anchor(root, CFrame.new(pos.X, targetY, pos.Z))
-	task.wait(0.06)
+	task.wait(0.04)
 	setStatus("Regrab spam")
 	local prompt = findPrompt(egg)
 	local grabStarted = tick()
-	local limit = math.min(CFG.grabDelay or 1.6, 0.55)
+	local limit = 0.28
 	while tick() - grabStarted < limit do
 		if tryCarryEgg(egg) or isActuallyCarrying() then
 			carrying = true
@@ -1044,9 +1048,9 @@ local function guardHitThenRegrab(egg, keepGoing)
 		task.wait(0.15)
 	end
 
-	-- Short settle only (was 1.4 — too long, guard re-aggros after regrab)
+	-- Short settle only — keep brief so prompt is ready, then regrab→peel ASAP
 	setStatus("Guard settle")
-	task.wait(0.45)
+	task.wait(0.18)
 
 	setStatus("Regrab")
 	if isActuallyCarrying() then
@@ -1178,47 +1182,72 @@ end
 local function peelThenEscape()
 	local hrp = getHRP()
 	if not hrp then return false end
-	setStatus("Peel")
-	local peelOk = stealMoveTo(hrp.Position.X, getLaneZ(), CFG.escapeSpeed, {
+	-- Fresh steal stamp so requireCarry doesn't flicker→reclaim back to nest
+	carrying = true
+	lastStealAt = tick()
+	recoverStand()
+	local peelOpts = {
 		requireCarry = true,
 		elevated = true,
-	})
-	if not peelOk and not isActuallyCarrying() then
-		carrying = false
-		setStatus("Egg lost")
-		local reclaim = findReclaimEgg() or findEggByUid(lastEggUid)
-		if reclaim and approachAndSteal(reclaim, CFG.approachSpeed) then
-			hrp = getHRP()
-			if not hrp then return false end
-			setStatus("Peel")
-			stealMoveTo(hrp.Position.X, getLaneZ(), CFG.escapeSpeed, {
-				requireCarry = true,
-				elevated = true,
-			})
+		carryGrace = 1.15, -- attribute lag after regrab; do NOT abort peel early
+	}
+	setStatus("Peel")
+	local peelOk = stealMoveTo(hrp.Position.X, getLaneZ(), CFG.escapeSpeed, peelOpts)
+	if not peelOk then
+		refreshCarry()
+		if not (carrying or isActuallyCarrying()) then
+			setStatus("Egg lost")
+			local reclaim = findReclaimEgg() or findEggByUid(lastEggUid)
+			if reclaim and approachAndSteal(reclaim, CFG.approachSpeed) then
+				hrp = getHRP()
+				if not hrp then return false end
+				carrying = true
+				lastStealAt = tick()
+				setStatus("Peel")
+				stealMoveTo(hrp.Position.X, getLaneZ(), CFG.escapeSpeed, peelOpts)
+			else
+				return false
+			end
 		else
-			return false
+			-- Still holding — retry peel once, never walk back to nest
+			hrp = getHRP()
+			if hrp then
+				lastStealAt = tick()
+				setStatus("Peel retry")
+				stealMoveTo(hrp.Position.X, getLaneZ(), CFG.escapeSpeed, peelOpts)
+			end
 		end
 	end
 
 	setStatus("Escape")
-	local escaped = returnToBase(CFG.escapeSpeed, { requireCarry = true, elevated = true })
-	if not escaped and not isActuallyCarrying() then
-		carrying = false
-		setStatus("Egg lost")
-		local reclaim = findReclaimEgg() or findEggByUid(lastEggUid)
-		if reclaim and approachAndSteal(reclaim, CFG.approachSpeed) then
+	carrying = true
+	lastStealAt = tick()
+	local escaped = returnToBase(CFG.escapeSpeed, peelOpts)
+	if not escaped then
+		refreshCarry()
+		if not (carrying or isActuallyCarrying()) then
+			setStatus("Egg lost")
+			local reclaim = findReclaimEgg() or findEggByUid(lastEggUid)
+			if reclaim and approachAndSteal(reclaim, CFG.approachSpeed) then
+				hrp = getHRP()
+				if hrp then
+					carrying = true
+					lastStealAt = tick()
+					setStatus("Peel")
+					stealMoveTo(hrp.Position.X, getLaneZ(), CFG.escapeSpeed, peelOpts)
+				end
+				setStatus("Escape")
+				escaped = returnToBase(CFG.escapeSpeed, peelOpts)
+			else
+				return false
+			end
+		else
 			hrp = getHRP()
 			if hrp then
-				setStatus("Peel")
-				stealMoveTo(hrp.Position.X, getLaneZ(), CFG.escapeSpeed, {
-					requireCarry = true,
-					elevated = true,
-				})
+				lastStealAt = tick()
+				setStatus("Escape retry")
+				escaped = returnToBase(CFG.escapeSpeed, peelOpts)
 			end
-			setStatus("Escape")
-			escaped = returnToBase(CFG.escapeSpeed, { requireCarry = true, elevated = true })
-		else
-			return false
 		end
 	end
 	return escaped ~= false or isActuallyCarrying() or isInPlot()
@@ -1280,13 +1309,16 @@ local function farmOnce()
 	end
 
 	-- Delivery failed fix: guard-hit → regrab → peel immediately (no nest linger)
-	guardHitThenRegrab(egg)
-	if not isActuallyCarrying() then
+	local gotEgg = guardHitThenRegrab(egg)
+	refreshCarry()
+	if not (gotEgg or carrying or isActuallyCarrying()) then
 		setStatus("Lost after hit")
 		task.wait(0.3)
 		return
 	end
 
+	carrying = true
+	lastStealAt = tick()
 	setStatus("Peel NOW")
 	peelThenEscape()
 	setStatus("Bank")
@@ -1756,7 +1788,7 @@ local function startEvidenceScrubLoop()
 	if scrubLoopStarted then return end
 	scrubLoopStarted = true
 	task.spawn(function()
-		while true do
+		while not destroyed do
 			if walkSpeedOn or flyOn then
 				if not scrubCachedIntegrity() then
 					integrityState = nil -- retry find next tick
@@ -1766,6 +1798,7 @@ local function startEvidenceScrubLoop()
 				task.wait(0.5)
 			end
 		end
+		scrubLoopStarted = false
 	end)
 end
 
@@ -2090,21 +2123,50 @@ function Api.setFly(on, speed)
 end
 
 function Api.destroy()
+	destroyed = true
 	autoFarm = false
+	farmBusy = false
+	carrying = false
 	stopFly()
 	walkSpeedOn = false
+	local hum = getHum()
+	if hum then
+		pcall(function()
+			hum.WalkSpeed = 16
+			hum.PlatformStand = false
+		end)
+	end
+	local hrp = getHRP()
+	if hrp then
+		pcall(function()
+			hrp.Anchored = false
+			hrp.AssemblyLinearVelocity = Vector3.zero
+			hrp.AssemblyAngularVelocity = Vector3.zero
+		end)
+	end
 	cancelManualDeliverAssist()
 	espFlags.players, espFlags.eggs, espFlags.beasts = false, false, false
 	clearEsp()
+	if charAddedConn then
+		pcall(function() charAddedConn:Disconnect() end)
+		charAddedConn = nil
+	end
 	for _, c in ipairs(connections) do
 		pcall(function() c:Disconnect() end)
 	end
 	connections = {}
 	espConn, moveConn, flyConn, deliverAssistConn = nil, nil, nil, nil
+	integrityState = nil
+	lastEggUid, lastEggPos = nil, nil
+	lastStealAt = 0
+	CFG.status = function() end
+	setStatus("Destroyed")
 end
 
-LP.CharacterAdded:Connect(function()
+charAddedConn = LP.CharacterAdded:Connect(function()
+	if destroyed then return end
 	task.wait(0.45)
+	if destroyed then return end
 	if autoFarm then
 		swapStealHumanoid()
 		patchRigSyncKnockback()

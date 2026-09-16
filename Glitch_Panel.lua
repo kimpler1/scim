@@ -1,16 +1,25 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V25
+  VER: V26
 ]]
 
-local GLITCH_UI_VER = "V25"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v25"
+local GLITCH_UI_VER = "V26"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v26"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local LP = Players.LocalPlayer
+
+-- Kill prior Glitch session (reinject / version swap without rejoin)
+pcall(function()
+	local g = (typeof(getgenv) == "function" and getgenv()) or _G
+	if type(g) == "table" and type(g.__GlitchDestroy) == "function" then
+		g.__GlitchDestroy()
+		g.__GlitchDestroy = nil
+	end
+end)
 
 local ACCENT = Color3.fromRGB(120, 110, 255)
 local ACCENT_SOFT = Color3.fromRGB(90, 80, 200)
@@ -101,6 +110,22 @@ local function loadCore()
 	end
 	coreApi = api
 	coreLoaded = true
+	pcall(function()
+		local g = (typeof(getgenv) == "function" and getgenv()) or _G
+		if type(g) == "table" then
+			g.__GlitchDestroy = function()
+				pcall(function()
+					if api.setWalkSpeed then api.setWalkSpeed(false) end
+					if api.setFly then api.setFly(false) end
+					if api.setEspPlayers then api.setEspPlayers(false) end
+					if api.setEspEggs then api.setEspEggs(false) end
+					if api.setEspBeasts then api.setEspBeasts(false) end
+					if api.stopFarm then api.stopFarm() end
+					if api.destroy then api.destroy() end
+				end)
+			end
+		end
+	end)
 	local cv = (coreApi.getVersion and coreApi.getVersion()) or "?"
 	setStatus(("Core OK  UI %s  Core %s"):format(GLITCH_UI_VER, tostring(cv)))
 	return true
@@ -144,9 +169,30 @@ local function pad(p, l, t, r, b)
 	return u
 end
 
--- Screen
+-- Screen: wipe any prior Glitch UI so reinject doesn't stack windows/state
+do
+	local function wipe(parent)
+		if not parent then return end
+		for _, c in ipairs(parent:GetChildren()) do
+			if c:IsA("ScreenGui") and tostring(c.Name):match("^Glitch") then
+				pcall(function() c:Destroy() end)
+			end
+		end
+	end
+	pcall(function()
+		wipe(game:GetService("CoreGui"))
+	end)
+	pcall(function()
+		local p = resolveHiddenParent()
+		wipe(p)
+	end)
+	pcall(function()
+		wipe(LP:FindFirstChild("PlayerGui"))
+	end)
+end
+
 local gui = Instance.new("ScreenGui")
-gui.Name = "Glitch_" .. tostring(math.random(10000, 99999))
+gui.Name = "GlitchSAE"
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.DisplayOrder = 999
@@ -751,7 +797,7 @@ fh.TextColor3 = MUTED
 fh.TextWrapped = true
 fh.TextXAlignment = Enum.TextXAlignment.Left
 fh.TextYAlignment = Enum.TextYAlignment.Top
-fh.Text = "V25: WS/Fly no per-frame getgc lag. PlantEgg on base. Autofarm frozen."
+fh.Text = "V26: peel ASAP after regrab. Close (×) full reset — reinject starts clean."
 fh.Parent = flyHint
 
 -- default page
@@ -771,15 +817,23 @@ end)
 
 closeBtn.MouseButton1Click:Connect(function()
 	autoOn = false
-	if coreApi then
-		pcall(function()
+	pcall(function()
+		local g = (typeof(getgenv) == "function" and getgenv()) or _G
+		if type(g) == "table" and type(g.__GlitchDestroy) == "function" then
+			g.__GlitchDestroy()
+			g.__GlitchDestroy = nil
+		elseif coreApi then
+			if coreApi.setWalkSpeed then coreApi.setWalkSpeed(false) end
+			if coreApi.setFly then coreApi.setFly(false) end
+			if coreApi.setEspPlayers then coreApi.setEspPlayers(false) end
+			if coreApi.setEspEggs then coreApi.setEspEggs(false) end
+			if coreApi.setEspBeasts then coreApi.setEspBeasts(false) end
 			if coreApi.stopFarm then coreApi.stopFarm() end
-		end)
-		pcall(function()
 			if coreApi.destroy then coreApi.destroy() end
-		end)
-	end
-	gui:Destroy()
+		end
+	end)
+	coreApi, coreLoaded = nil, false
+	pcall(function() gui:Destroy() end)
 end)
 
 if not okMount then
