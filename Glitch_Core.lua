@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V46
+  VER: V47
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V46"
+local GLITCH_CORE_VER = "V47"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -1156,16 +1156,25 @@ end
 
 local function peelThenEscape()
 	local hrp = getHRP()
-	if not hrp then return false end
-	setStatus("Peel")
-	local peelOk = stealMoveTo(hrp.Position.X, getLaneZ(), CFG.escapeSpeed, {
-		requireCarry = true,
-		elevated = true,
-	})
-	if not peelOk and not isActuallyCarrying() then
-		carrying = false
-		setStatus("Egg lost")
-		return false
+	local base = getBasePos()
+	if not (hrp and base) then return false end
+
+	-- The regrab is already confirmed. Leave the guard's attack radius first,
+	-- in the same frame, then use the normal guarded route back to the plot.
+	setStatus("Launch")
+	local flat = Vector3.new(base.X - hrp.Position.X, 0, base.Z - hrp.Position.Z)
+	if flat.Magnitude > 2 then
+		local launchDist = math.min(45, flat.Magnitude)
+		local launch = hrp.Position + flat.Unit * launchDist
+		local launchY = groundedY(launch.X, launch.Z, hrp.Position.Y) + (CFG.escapeHeight or 5)
+		local launchPos = Vector3.new(launch.X, launchY, launch.Z)
+		anchor(hrp, CFrame.lookAt(launchPos, launchPos + flat))
+		local hum = getHum()
+		if hum then
+			hum.PlatformStand = false
+			hum.Sit = false
+			pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+		end
 	end
 
 	setStatus("Escape")
