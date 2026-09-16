@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: exact Best Version V18 (guard sleep 1.4 + full trySteal regrab).
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V28  (= Best Version V30 exact; V27 stop/close patch rolled back)
+  VER: V30
   FROZEN (LO 2026-09-16):
     - Autofarm = Best Version V18 guardHitThenRegrab / peelThenEscape / farmOnce
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V28"
+local GLITCH_CORE_VER = "V30"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
