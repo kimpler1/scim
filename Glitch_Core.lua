@@ -1,14 +1,15 @@
 --[[
   Glitch Core — Steal An Egg
-  Farm: Quest V18 lineage. ESP + Walk/Fly + Oxide Evidence scrub.
-  VER: V25
-  FROZEN (LO 2026-09-15):
-    - Autofarm: farmOnce / guardHitThenRegrab / peelThenEscape
-    - WS + Fly: scrub @0.2s cached, unanchored velocity fly, WS loop
-    Manual WS/Fly steal: 1 guard hit → 2nd grab → base (do not auto-freeze/validate)
+  Farm: exact Best Version V18 (guard sleep 1.4 + full trySteal regrab).
+  WS/Fly/ESP: Best Version V25 (unchanged).
+  VER: V26
+  FROZEN (LO 2026-09-16):
+    - Autofarm = Best Version V18 guardHitThenRegrab / peelThenEscape / farmOnce
+    - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
+    Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V25"
+local GLITCH_CORE_VER = "V26"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -935,44 +936,8 @@ local function approachAndSteal(egg, speed)
 	return trySteal(egg)
 end
 
--- Fast grab for post-guard regrab — do not sit on nest for full grabDelay
-local function tryStealFast(egg)
-	local pos = eggPos(egg)
-	local root = getHRP()
-	if not root or not pos then return false end
-	local targetY = groundedY(pos.X, pos.Z, pos.Y)
-	anchor(root, CFrame.new(pos.X, targetY, pos.Z))
-	task.wait(0.06)
-	setStatus("Regrab spam")
-	local prompt = findPrompt(egg)
-	local grabStarted = tick()
-	local limit = math.min(CFG.grabDelay or 1.6, 0.55)
-	while tick() - grabStarted < limit do
-		if tryCarryEgg(egg) or isActuallyCarrying() then
-			carrying = true
-			lastEggUid = egg.Name
-			lastEggPos = pos
-			lastStealAt = tick()
-			setStatus("Regrab->PEEL")
-			return true
-		end
-		prompt = prompt or findPrompt(egg)
-		fireStealPrompt(prompt)
-		RunService.Heartbeat:Wait()
-	end
-	if isActuallyCarrying() then
-		carrying = true
-		lastEggUid = egg.Name
-		lastEggPos = pos
-		lastStealAt = tick()
-		setStatus("Regrab->PEEL")
-		return true
-	end
-	return false
-end
-
--- Oxide guard-hit double pickup: validates steal so base doesn't reject deliver
--- After SECOND pickup must peel immediately — never linger on nest (second hit drops egg).
+-- Exact Best Version V18 guard-hit: stand → Guard sleep 1.4 → full trySteal regrab.
+-- keepGoing: only for manual WS/Fly validate; farm uses autoFarm.
 local function guardHitThenRegrab(egg, keepGoing)
 	if not CFG.guardHit then return isActuallyCarrying() end
 	if not egg then return isActuallyCarrying() end
@@ -1000,9 +965,8 @@ local function guardHitThenRegrab(egg, keepGoing)
 				or st == Enum.HumanoidStateType.Ragdoll
 				or st == Enum.HumanoidStateType.FallingDown then
 				wasHit = true
-				-- Wait for egg to actually leave hands (not just flinch)
 				local tPost = tick()
-				while tick() - tPost < 1.1 and alive() do
+				while tick() - tPost < 0.85 and alive() do
 					if not isActuallyCarrying() then break end
 					task.wait(0.05)
 				end
@@ -1012,55 +976,43 @@ local function guardHitThenRegrab(egg, keepGoing)
 		task.wait(0.05)
 	end
 
-	-- Hit registered but egg still in hands → validated enough, LEAVE NOW (don't sleep on nest)
-	if wasHit and isActuallyCarrying() then
-		setStatus("Hit+carry->PEEL")
-		carrying = true
-		lastStealAt = tick()
-		return true
-	end
-
 	if not wasHit and isActuallyCarrying() then
-		setStatus("No hit->PEEL")
+		setStatus("No hit->GO")
 		return true
 	end
 
-	-- Egg dropped: stand up, brief settle, regrab, peel — no 1.4s dead wait with egg later
-	task.wait(0.35)
+	task.wait(0.55)
 	setStatus("Stand")
 	local tStand = tick()
-	while tick() - tStand < 2.2 and alive() do
+	while tick() - tStand < 3.0 and alive() do
 		if not isDowned() then break end
 		recoverStand()
-		task.wait(0.08)
+		task.wait(0.12)
 	end
 	recoverStand()
-	task.wait(0.2)
+	task.wait(0.35)
 
 	local hrp = getHRP()
-	if hrp and pos and (hrp.Position - pos).Magnitude > 14 then
+	if hrp and (hrp.Position - pos).Magnitude > 14 then
 		local y = groundedY(pos.X, pos.Z, pos.Y)
 		anchor(hrp, CFrame.new(pos.X, y, pos.Z))
-		task.wait(0.15)
+		task.wait(0.3)
 	end
 
-	-- Short settle only (was 1.4 — too long, guard re-aggros after regrab)
-	setStatus("Guard settle")
-	task.wait(0.45)
+	setStatus("Guard sleep")
+	task.wait(1.4)
 
 	setStatus("Regrab")
 	if isActuallyCarrying() then
 		carrying = true
-		lastStealAt = tick()
-		setStatus("Regrab->PEEL")
 		return true
 	end
 	local reclaim = findEggByUid(egg.Name) or egg
-	if tryStealFast(reclaim) then
+	if trySteal(reclaim) then
 		return true
 	end
-	-- One more quick spam without approach walk
-	if tryStealFast(findReclaimEgg() or findEggByUid(lastEggUid) or reclaim) then
+	reclaim = findReclaimEgg() or findEggByUid(lastEggUid) or reclaim
+	if reclaim and approachAndSteal(reclaim, CFG.approachSpeed) then
 		return true
 	end
 	return isActuallyCarrying()
@@ -1279,7 +1231,7 @@ local function farmOnce()
 		return
 	end
 
-	-- Delivery failed fix: guard-hit → regrab → peel immediately (no nest linger)
+	-- Delivery failed fix: let guard hit once, stand, regrab, then escape
 	guardHitThenRegrab(egg)
 	if not isActuallyCarrying() then
 		setStatus("Lost after hit")
@@ -1287,7 +1239,6 @@ local function farmOnce()
 		return
 	end
 
-	setStatus("Peel NOW")
 	peelThenEscape()
 	setStatus("Bank")
 	local bankUntil = tick() + CFG.baseWait + 2
