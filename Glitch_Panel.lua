@@ -1,52 +1,16 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V28
+  VER: V25
 ]]
 
-local GLITCH_UI_VER = "V28"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v28"
+local GLITCH_UI_VER = "V25"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v25"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local LP = Players.LocalPlayer
-
-local function glitchEnvs()
-	local list = {}
-	pcall(function()
-		if typeof(getgenv) == "function" then
-			local g = getgenv()
-			if type(g) == "table" then table.insert(list, g) end
-		end
-	end)
-	pcall(function()
-		if type(shared) == "table" then table.insert(list, shared) end
-	end)
-	pcall(function()
-		if type(_G) == "table" then table.insert(list, _G) end
-	end)
-	return list
-end
-
-local function callStoredDestroy()
-	for _, g in ipairs(glitchEnvs()) do
-		local fn = rawget(g, "__GlitchDestroy")
-		if type(fn) == "function" then
-			pcall(fn)
-			pcall(function() rawset(g, "__GlitchDestroy", nil) end)
-		end
-	end
-end
-
-local function storeDestroy(fn)
-	for _, g in ipairs(glitchEnvs()) do
-		pcall(function() rawset(g, "__GlitchDestroy", fn) end)
-	end
-end
-
--- Kill prior Glitch session (reinject / version swap without rejoin)
-pcall(callStoredDestroy)
 
 local ACCENT = Color3.fromRGB(120, 110, 255)
 local ACCENT_SOFT = Color3.fromRGB(90, 80, 200)
@@ -137,18 +101,6 @@ local function loadCore()
 	end
 	coreApi = api
 	coreLoaded = true
-	local function wipeApi()
-		pcall(function()
-			if api.setWalkSpeed then api.setWalkSpeed(false) end
-			if api.setFly then api.setFly(false) end
-			if api.setEspPlayers then api.setEspPlayers(false) end
-			if api.setEspEggs then api.setEspEggs(false) end
-			if api.setEspBeasts then api.setEspBeasts(false) end
-			if api.stopFarm then api.stopFarm() end
-			if api.destroy then api.destroy() end
-		end)
-	end
-	storeDestroy(wipeApi)
 	local cv = (coreApi.getVersion and coreApi.getVersion()) or "?"
 	setStatus(("Core OK  UI %s  Core %s"):format(GLITCH_UI_VER, tostring(cv)))
 	return true
@@ -192,30 +144,9 @@ local function pad(p, l, t, r, b)
 	return u
 end
 
--- Screen: wipe any prior Glitch UI so reinject doesn't stack windows/state
-do
-	local function wipe(parent)
-		if not parent then return end
-		for _, c in ipairs(parent:GetChildren()) do
-			if c:IsA("ScreenGui") and tostring(c.Name):match("^Glitch") then
-				pcall(function() c:Destroy() end)
-			end
-		end
-	end
-	pcall(function()
-		wipe(game:GetService("CoreGui"))
-	end)
-	pcall(function()
-		local p = resolveHiddenParent()
-		wipe(p)
-	end)
-	pcall(function()
-		wipe(LP:FindFirstChild("PlayerGui"))
-	end)
-end
-
+-- Screen
 local gui = Instance.new("ScreenGui")
-gui.Name = "GlitchSAE"
+gui.Name = "Glitch_" .. tostring(math.random(10000, 99999))
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.DisplayOrder = 999
@@ -274,7 +205,6 @@ sub.Text = ("glass ui  ·  quest farm  ·  %s"):format(GLITCH_UI_VER)
 sub.Parent = header
 
 local closeBtn = Instance.new("TextButton")
-closeBtn.Name = "Close"
 closeBtn.Size = UDim2.fromOffset(28, 28)
 closeBtn.Position = UDim2.new(1, -36, 0.5, -14)
 closeBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 70)
@@ -284,13 +214,10 @@ closeBtn.Font = Enum.Font.GothamBold
 closeBtn.TextSize = 18
 closeBtn.TextColor3 = TEXT
 closeBtn.BorderSizePixel = 0
-closeBtn.ZIndex = 20
-closeBtn.AutoButtonColor = true
 closeBtn.Parent = header
 corner(closeBtn, 8)
 
 local minBtn = Instance.new("TextButton")
-minBtn.Name = "Min"
 minBtn.Size = UDim2.fromOffset(28, 28)
 minBtn.Position = UDim2.new(1, -70, 0.5, -14)
 minBtn.BackgroundColor3 = Color3.fromRGB(50, 48, 70)
@@ -300,28 +227,21 @@ minBtn.Font = Enum.Font.GothamBold
 minBtn.TextSize = 18
 minBtn.TextColor3 = TEXT
 minBtn.BorderSizePixel = 0
-minBtn.ZIndex = 20
 minBtn.Parent = header
 corner(minBtn, 8)
 
--- Drag (ignore clicks on Close / Min)
+-- Drag
 do
 	local dragging, dragStart, startPos, dragInput
 	header.InputBegan:Connect(function(input)
-		if input.UserInputType ~= Enum.UserInputType.MouseButton1
-			and input.UserInputType ~= Enum.UserInputType.Touch then
-			return
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = win.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then dragging = false end
+			end)
 		end
-		local t = input.Target
-		if t and (t == closeBtn or t == minBtn or t:IsDescendantOf(closeBtn) or t:IsDescendantOf(minBtn)) then
-			return
-		end
-		dragging = true
-		dragStart = input.Position
-		startPos = win.Position
-		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then dragging = false end
-		end)
 	end)
 	header.InputChanged:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
@@ -831,7 +751,7 @@ fh.TextColor3 = MUTED
 fh.TextWrapped = true
 fh.TextXAlignment = Enum.TextXAlignment.Left
 fh.TextYAlignment = Enum.TextYAlignment.Top
-fh.Text = "V28: Close (×) kills farm/WS/Fly/ESP and snaps to ground."
+fh.Text = "V25: WS/Fly no per-frame getgc lag. PlantEgg on base. Autofarm frozen."
 fh.Parent = flyHint
 
 -- default page
@@ -849,37 +769,17 @@ minBtn.MouseButton1Click:Connect(function()
 	win.Size = minimized and UDim2.fromOffset(560, 44) or UDim2.fromOffset(560, 380)
 end)
 
-local shuttingDown = false
-local function shutdownAll()
-	if shuttingDown then return end
-	shuttingDown = true
+closeBtn.MouseButton1Click:Connect(function()
 	autoOn = false
-	-- Always wipe THIS session's core (do not rely on stale getgenv alone)
-	pcall(function()
-		if coreApi then
-			if coreApi.setWalkSpeed then coreApi.setWalkSpeed(false) end
-			if coreApi.setFly then coreApi.setFly(false) end
-			if coreApi.setEspPlayers then coreApi.setEspPlayers(false) end
-			if coreApi.setEspEggs then coreApi.setEspEggs(false) end
-			if coreApi.setEspBeasts then coreApi.setEspBeasts(false) end
+	if coreApi then
+		pcall(function()
 			if coreApi.stopFarm then coreApi.stopFarm() end
+		end)
+		pcall(function()
 			if coreApi.destroy then coreApi.destroy() end
-		end
-	end)
-	pcall(callStoredDestroy)
-	coreApi, coreLoaded = nil, false
-	pcall(function()
-		if gui and gui.Parent then gui:Destroy() end
-	end)
-end
-
-closeBtn.MouseButton1Click:Connect(shutdownAll)
-closeBtn.Activated:Connect(shutdownAll)
--- If UI is destroyed externally, still wipe core/movement
-gui.AncestryChanged:Connect(function(_, parent)
-	if parent == nil then
-		shutdownAll()
+		end)
 	end
+	gui:Destroy()
 end)
 
 if not okMount then
