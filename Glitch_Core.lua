@@ -1,15 +1,15 @@
 --[[
   Glitch Core — Steal An Egg
-  Farm: V31 fast regrab (V18 guard sleep + no unnecessary post-hit idle).
+  Farm: exact Best Version V18 (guard sleep 1.4 + full trySteal regrab).
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V31
+  VER: V32
   FROZEN (LO 2026-09-16):
-    - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce, with fast regrab timing
+    - Autofarm = exact Best Version V18 guardHitThenRegrab / peelThenEscape / farmOnce
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V31"
+local GLITCH_CORE_VER = "V32"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -52,10 +52,6 @@ local CFG = {
 	biomeRadiusX = 220,
 	biomeRadiusZ = 140,
 	guardHit = true, -- Oxide: steal -> get hit -> stand -> regrab -> return (fixes Delivery failed)
-	-- First hit must register before regrab. Keep guard cooldown, but do not idle after it.
-	guardPostHitObserve = 0.15,
-	guardStandSettle = 0.12,
-	guardSleep = 1.4,
 	status = function() end,
 }
 
@@ -940,7 +936,7 @@ local function approachAndSteal(egg, speed)
 	return trySteal(egg)
 end
 
--- First hit validates the steal; once standing, regrab and escape without extra idle.
+-- Exact Best Version V18 guard-hit: stand → Guard sleep 1.4 → full trySteal regrab.
 -- keepGoing: only for manual WS/Fly validate; farm uses autoFarm.
 local function guardHitThenRegrab(egg, keepGoing)
 	if not CFG.guardHit then return isActuallyCarrying() end
@@ -970,7 +966,7 @@ local function guardHitThenRegrab(egg, keepGoing)
 				or st == Enum.HumanoidStateType.FallingDown then
 				wasHit = true
 				local tPost = tick()
-				while tick() - tPost < (CFG.guardPostHitObserve or 0.15) and alive() do
+				while tick() - tPost < 0.85 and alive() do
 					if not isActuallyCarrying() then break end
 					task.wait(0.05)
 				end
@@ -985,7 +981,7 @@ local function guardHitThenRegrab(egg, keepGoing)
 		return true
 	end
 
-	task.wait(CFG.guardStandSettle or 0.12)
+	task.wait(0.55)
 	setStatus("Stand")
 	local tStand = tick()
 	while tick() - tStand < 3.0 and alive() do
@@ -994,7 +990,7 @@ local function guardHitThenRegrab(egg, keepGoing)
 		task.wait(0.12)
 	end
 	recoverStand()
-	task.wait(CFG.guardStandSettle or 0.12)
+	task.wait(0.35)
 
 	local hrp = getHRP()
 	if hrp and (hrp.Position - pos).Magnitude > 14 then
@@ -1004,7 +1000,7 @@ local function guardHitThenRegrab(egg, keepGoing)
 	end
 
 	setStatus("Guard sleep")
-	task.wait(CFG.guardSleep or 1.4)
+	task.wait(1.4)
 
 	setStatus("Regrab")
 	if isActuallyCarrying() then
