@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V50
+  VER: V51
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V50"
+local GLITCH_CORE_VER = "V51"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -80,6 +80,7 @@ local wasCarryingEdge = false
 local acInstalled = false
 local acStatus = "off"
 local lastScanInfo = "slots=0 snap=0"
+local lastBestInfo = ""
 
 local function setStatus(t)
 	CFG.status(t)
@@ -676,7 +677,7 @@ local function bestEggInBiome()
 	local hrp = getHRP()
 	if not hrp then return nil end
 	local recs = recordsByUid()
-	local best, bestScore, bestRarity
+	local best, bestScore, bestRarity, bestRecord
 	for uid, rec in pairs(recs) do
 		local cf = rec.BoundsCFrame or rec.BottomCFrame
 		if rec.State == "Slot" and typeof(cf) == "CFrame" then
@@ -685,13 +686,19 @@ local function bestEggInBiome()
 			if eggInSelectedBiome(candidate, rec) then
 				local score, rarity = bestEggScore(rec, (cf.Position - hrp.Position).Magnitude)
 				if not bestScore or score > bestScore then
-					best, bestScore, bestRarity = candidate, score, rarity
+					best, bestScore, bestRarity, bestRecord = candidate, score, rarity, rec
 				end
 			end
 		end
 	end
 	if best then
-		setStatus("Best " .. tostring(bestRarity))
+		local mutations = bestRecord and typeof(bestRecord.Mutations) == "table" and bestRecord.Mutations or {}
+		local mutationText = #mutations > 0 and (" + " .. table.concat(mutations, ",")) or ""
+		local scale = bestRecord and tonumber(bestRecord.AssetScale) or 1
+		lastBestInfo = ("%s · %s · x%.2f%s"):format(
+			tostring(bestRecord and bestRecord.AssetCategory or "Egg"), tostring(bestRarity), scale, mutationText
+		)
+		setStatus("Best " .. lastBestInfo)
 		return best
 	end
 	return nearestEggInBiome()
@@ -1031,6 +1038,16 @@ local function findReclaimEgg()
 		if rec.State == "Dropped" and typeof(cf) == "CFrame" then
 			local live = AreaEggs and AreaEggs:FindFirstChild(uid)
 			consider(live or { Name = uid, Position = cf.Position, Record = rec }, uid == lastEggUid and 4 or 2)
+		end
+	end
+	-- State replication can lag after an impact. If the original dropped UID has
+	-- not appeared yet, take the nearest live egg in the immediate recovery area.
+	if not best and AreaEggs then
+		for _, egg in ipairs(AreaEggs:GetChildren()) do
+			local pos = eggPos(egg)
+			if pos and (pos - hrp.Position).Magnitude <= 85 then
+				consider(egg, 1)
+			end
 		end
 	end
 	return best
