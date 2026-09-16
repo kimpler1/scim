@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V27
+  VER: V28
 ]]
 
-local GLITCH_UI_VER = "V27"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v27"
+local GLITCH_UI_VER = "V28"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v28"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -751,7 +751,7 @@ fh.TextColor3 = MUTED
 fh.TextWrapped = true
 fh.TextXAlignment = Enum.TextXAlignment.Left
 fh.TextYAlignment = Enum.TextYAlignment.Top
-fh.Text = "V27: Auto off keeps WS. Close (×) resets farm/WS/Fly to vanilla."
+fh.Text = "V28: Best Version V30 restore. Farm/WS/Fly untouched."
 fh.Parent = flyHint
 
 -- default page
@@ -774,15 +774,12 @@ closeBtn.MouseButton1Click:Connect(function()
 	if coreApi then
 		pcall(function()
 			if coreApi.stopFarm then coreApi.stopFarm() end
-			if coreApi.setWalkSpeed then coreApi.setWalkSpeed(false) end
-			if coreApi.setFly then coreApi.setFly(false) end
-			if coreApi.setEspPlayers then coreApi.setEspPlayers(false) end
-			if coreApi.setEspEggs then coreApi.setEspEggs(false) end
-			if coreApi.setEspBeasts then coreApi.setEspBeasts(false) end
+		end)
+		pcall(function()
 			if coreApi.destroy then coreApi.destroy() end
 		end)
 	end
-	pcall(function() gui:Destroy() end)
+	gui:Destroy()
 end)
 
 if not okMount then
