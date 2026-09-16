@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V51
+  VER: V52
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V51"
+local GLITCH_CORE_VER = "V52"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -546,13 +546,32 @@ local function areaMatches(a, b)
 	return x == y or x:find(y, 1, true) ~= nil or y:find(x, 1, true) ~= nil
 end
 
+-- Update 4's twelfth map is one nightly area with two server-side names.
+-- Do not hard-code a position for it: use the live Bounds object for the side
+-- (Angels or Demons) which is actually present in this server.
+local function biomeAliases(name)
+	if name == "Angels / Demons" then
+		return { "Angels", "Demons", "Angel", "Demon", "Light", "Darkness", "Light vs Darkness" }
+	end
+	return { name }
+end
+
+local function matchesBiome(areaId, biome)
+	for _, alias in ipairs(biomeAliases(biome)) do
+		if areaMatches(areaId, alias) then return true end
+	end
+	return false
+end
+
 local function findZoneFolder(name)
 	if not GuardAreas then return nil end
-	local exact = GuardAreas:FindFirstChild(name)
-	if exact then return exact end
-	for _, child in ipairs(GuardAreas:GetChildren()) do
-		if areaMatches(child.Name, name) then
-			return child
+	for _, alias in ipairs(biomeAliases(name)) do
+		local exact = GuardAreas:FindFirstChild(alias)
+		if exact then return exact end
+		for _, child in ipairs(GuardAreas:GetChildren()) do
+			if areaMatches(child.Name, alias) then
+				return child
+			end
 		end
 	end
 end
@@ -612,19 +631,30 @@ local function nearBiomeCenter(pos, biome)
 	return math.abs(pos.X - center.X) <= rx and math.abs(pos.Z - center.Z) <= rz
 end
 
+local function isInsideBiomeBounds(pos, biome)
+	local bounds = getZoneBounds(biome)
+	if not bounds then return nil end
+	if not pos then return false end
+	local lp = bounds.CFrame:PointToObjectSpace(pos)
+	local half = bounds.Size * 0.5
+	return math.abs(lp.X) <= half.X + 40
+		and math.abs(lp.Y) <= half.Y + 80
+		and math.abs(lp.Z) <= half.Z + 40
+end
+
 local function eggInSelectedBiome(egg, record)
 	local biome = CFG.biomes[CFG.biomeIndex]
-	if record and areaMatches(record.AreaId, biome) then return true end
 	local pos = eggPos(egg)
-	local bounds = getZoneBounds(biome)
-	if bounds and pos then
-		local lp = bounds.CFrame:PointToObjectSpace(pos)
-		local half = bounds.Size * 0.5
-		if math.abs(lp.X) <= half.X + 40
-			and math.abs(lp.Y) <= half.Y + 80
-			and math.abs(lp.Z) <= half.Z + 40 then
-			return true
-		end
+	local inBounds = isInsideBiomeBounds(pos, biome)
+	local reportedHere = record and matchesBiome(record.AreaId, biome)
+	-- Immediately after PlantEgg the snapshot can be stale.  A matching AreaId
+	-- must never pull a visible egg from another zone when live Bounds disagree.
+	if reportedHere and inBounds ~= false then return true end
+	if inBounds == true then return true end
+	if reportedHere and not pos then return true end
+	if inBounds == false then return false end
+	if not pos then
+		return false
 	end
 	-- Late biomes often have eggs with nil/stale snapshot records — match by Oxide coords
 	if nearBiomeCenter(pos, biome) then

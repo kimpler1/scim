@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V51
+  VER: V52
 ]]
 
-local GLITCH_UI_VER = "V51"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v51"
+local GLITCH_UI_VER = "V52"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v52"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -24,6 +24,7 @@ local ROW = Color3.fromRGB(36, 32, 58)
 local BIOMES = {
 	"Forest", "Lake", "Desert", "Jungle", "Snow", "Volcano",
 	"Abyss Ocean", "Prehistoric", "Cosmic", "Cherry Blossom", "Titan Temple",
+	"Angels / Demons",
 }
 
 local selectedBiome = 1
