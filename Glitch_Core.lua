@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V47
+  VER: V48
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V47"
+local GLITCH_CORE_VER = "V48"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -966,7 +966,7 @@ local function approachAndSteal(egg, speed)
 	return trySteal(egg)
 end
 
--- Guard-hit recovery: wait for stand → regrab → immediate escape.
+-- Proven V18 guard sequence: wait for stand → guard cooldown → full regrab.
 -- keepGoing: only for manual WS/Fly validate; farm uses autoFarm.
 local function guardHitThenRegrab(egg, keepGoing)
 	if not CFG.guardHit then return isActuallyCarrying() end
@@ -1020,7 +1020,7 @@ local function guardHitThenRegrab(egg, keepGoing)
 		task.wait(0.12)
 	end
 	recoverStand()
-	task.wait(0.08)
+	task.wait(0.35)
 
 	local hrp = getHRP()
 	if hrp and (hrp.Position - pos).Magnitude > 14 then
@@ -1029,9 +1029,10 @@ local function guardHitThenRegrab(egg, keepGoing)
 		task.wait(0.3)
 	end
 
-	-- As soon as the character is standing again, regrab and let farmOnce start
-	-- the escape path immediately. Waiting here leaves the player in the guard AOE.
-	setStatus("Stand OK -> regrab")
+	setStatus("Guard sleep")
+	task.wait(1.4)
+
+	setStatus("Regrab")
 	if isActuallyCarrying() then
 		carrying = true
 		return true
@@ -1040,8 +1041,10 @@ local function guardHitThenRegrab(egg, keepGoing)
 	if trySteal(reclaim) then
 		return true
 	end
-	-- Do not reclaim immediately in the guard's attack zone. farmOnce will reset,
-	-- wait for recovery, and begin the complete attempt again from a clean state.
+	reclaim = findReclaimEgg() or findEggByUid(lastEggUid) or reclaim
+	if reclaim and approachAndSteal(reclaim, CFG.approachSpeed) then
+		return true
+	end
 	return isActuallyCarrying()
 end
 
@@ -1156,25 +1159,16 @@ end
 
 local function peelThenEscape()
 	local hrp = getHRP()
-	local base = getBasePos()
-	if not (hrp and base) then return false end
-
-	-- The regrab is already confirmed. Leave the guard's attack radius first,
-	-- in the same frame, then use the normal guarded route back to the plot.
-	setStatus("Launch")
-	local flat = Vector3.new(base.X - hrp.Position.X, 0, base.Z - hrp.Position.Z)
-	if flat.Magnitude > 2 then
-		local launchDist = math.min(45, flat.Magnitude)
-		local launch = hrp.Position + flat.Unit * launchDist
-		local launchY = groundedY(launch.X, launch.Z, hrp.Position.Y) + (CFG.escapeHeight or 5)
-		local launchPos = Vector3.new(launch.X, launchY, launch.Z)
-		anchor(hrp, CFrame.lookAt(launchPos, launchPos + flat))
-		local hum = getHum()
-		if hum then
-			hum.PlatformStand = false
-			hum.Sit = false
-			pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
-		end
+	if not hrp then return false end
+	setStatus("Peel")
+	local peelOk = stealMoveTo(hrp.Position.X, getLaneZ(), CFG.escapeSpeed, {
+		requireCarry = true,
+		elevated = true,
+	})
+	if not peelOk and not isActuallyCarrying() then
+		carrying = false
+		setStatus("Egg lost")
+		return false
 	end
 
 	setStatus("Escape")
