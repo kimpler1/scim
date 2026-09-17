@@ -1,14 +1,16 @@
 --[[
   Bat Aura Probe — read-only action journal for Steal An Egg.
-  Stop/close: getgenv().SAE_BAT_AURA_PROBE = false
+  Stop/close: getgenv().SAE_CARRIER_PROBE = false
 ]]
 
 local CoreGui = game:GetService("CoreGui")
 local ProximityPromptService = game:GetService("ProximityPromptService")
-local PROBE_VER = "V66"
+local PROBE_VER = "V67"
 
 local ENV = (getgenv and getgenv()) or _G
-ENV.SAE_BAT_AURA_PROBE = true
+ENV.SAE_BAT_AURA_PROBE = false -- disables the hook left by V63/V66
+ENV.SAE_CARRIER_PROBE = true
+local NETWORK_CAPTURE = ENV.SAE_CARRIER_PROBE_NETWORK == true
 
 local uiParent = CoreGui
 pcall(function()
@@ -83,7 +85,7 @@ local function addLine(text)
 	while #lines > 15 do table.remove(lines) end
 	while #fullLines > 300 do table.remove(fullLines, 1) end
 	render()
-	pcall(function() print("[BatAura Probe] " .. stamped) end)
+
 end
 
 local function valueText(value)
@@ -95,7 +97,7 @@ local function valueText(value)
 end
 
 local function record(remote, method, args)
-	if not ENV.SAE_BAT_AURA_PROBE then return end
+	if not ENV.SAE_CARRIER_PROBE then return end
 	local parts = {}
 	for i = 1, math.min(args.n, 4) do table.insert(parts, valueText(args[i])) end
 	local path = remote:GetFullName()
@@ -131,7 +133,7 @@ button("Copy", -166, function()
 	end
 end)
 button("Close", -84, function()
-	ENV.SAE_BAT_AURA_PROBE = false
+	ENV.SAE_CARRIER_PROBE = false
 	gui:Destroy()
 end)
 
@@ -140,7 +142,7 @@ addLine("Probe loaded; hooks installing")
 local function watchTool(tool)
 	if not tool:IsA("Tool") then return end
 	tool.Activated:Connect(function()
-		if ENV.SAE_BAT_AURA_PROBE then addLine("Tool:Activate " .. tool:GetFullName()) end
+		if ENV.SAE_CARRIER_PROBE then addLine("Tool:Activate " .. tool:GetFullName()) end
 	end)
 end
 local function watchContainer(container)
@@ -153,7 +155,7 @@ watchContainer(player:FindFirstChildOfClass("Backpack"))
 player.CharacterAdded:Connect(watchContainer)
 if player.Character then watchContainer(player.Character) end
 ProximityPromptService.PromptTriggered:Connect(function(prompt, owner)
-	if ENV.SAE_BAT_AURA_PROBE and owner == player then addLine("Prompt " .. prompt:GetFullName()) end
+	if ENV.SAE_CARRIER_PROBE and owner == player then addLine("Prompt " .. prompt:GetFullName()) end
 end)
 
 -- Carrier state is not exposed through a public API.  Watch only changes that
@@ -168,13 +170,13 @@ local function carrierDescribe(inst)
 end
 local function watchCarrierCharacter(plr, char)
 	char.DescendantAdded:Connect(function(inst)
-		if not ENV.SAE_BAT_AURA_PROBE then return end
+		if not ENV.SAE_CARRIER_PROBE then return end
 		if inst:IsA("Tool") or inst:IsA("Model") or (inst:IsA("BasePart") and not bodyParts[inst.Name]) then
 			addLine("CARRIER+ " .. plr.Name .. " · " .. carrierDescribe(inst))
 		end
 	end)
 	char.AttributeChanged:Connect(function(name)
-		if ENV.SAE_BAT_AURA_PROBE then
+		if ENV.SAE_CARRIER_PROBE then
 			local n = tostring(name):lower()
 			if n:find("egg", 1, true) or n:find("carry", 1, true) or n:find("hold", 1, true) then
 				addLine("CARRIER ATTR " .. plr.Name .. " · " .. tostring(name) .. "=" .. tostring(char:GetAttribute(name)))
@@ -193,6 +195,11 @@ end
 for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do watchCarrierPlayer(plr) end
 game:GetService("Players").PlayerAdded:Connect(watchCarrierPlayer)
 
+if not NETWORK_CAPTURE then
+	title.Text = "Bat Aura Probe V67 · safe mode"
+	addLine("Safe mode: character/tool/prompt journal ready; no global network hook")
+	return
+end
 if not (hookmetamethod and getnamecallmethod and newcclosure) then
 	title.Text = "Bat Aura Probe · executor не поддерживает network hook"
 	addLine("ERROR: hookmetamethod/getnamecallmethod/newcclosure unavailable")
@@ -202,11 +209,11 @@ end
 local previous
 previous = hookmetamethod(game, "__namecall", newcclosure(function(remote, ...)
 	local method = getnamecallmethod()
-	if ENV.SAE_BAT_AURA_PROBE and (method == "FireServer" or method == "InvokeServer")
+	if ENV.SAE_CARRIER_PROBE and (method == "FireServer" or method == "InvokeServer")
 		and (remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction")) then
 		record(remote, method, table.pack(...))
 	end
 	return previous(remote, ...)
 end))
 
-addLine("Network hook ready")
+addLine("Full network journal ready")
