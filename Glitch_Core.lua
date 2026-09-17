@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V58
+  VER: V59
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V58"
+local GLITCH_CORE_VER = "V59"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -59,11 +59,14 @@ local CFG = {
 }
 
 local EggState, PlotState, SlotIdentity, AssetsData
+local HatchAllFn, PlaceAllPetsFn, SellAllPetsFn
 local CarryFn, SnapshotFn, SyncSnapshot, CarrySignal
 local GetRespawn, GetPlot, InPlot, IsFirstUid, BuildSlotKey
 local AreasFolder, GuardAreas, AreaEggs
 local Bound = false
 local autoFarm, carrying, farmBusy = false, false, false
+local autoActions = { plant = false, hatch = false, place = false, sell = false }
+local autoActionsBusy = false
 local connections = {}
 local espFlags = { players = false, eggs = false, beasts = false }
 local espMap = {} -- [key] = { hl, bb, label, kind }
@@ -132,6 +135,9 @@ local function bindGame()
 	InPlot = pick(PlotState, "ContainsLocalPoint", "IsWorldPositionWithinLocalPlotBounds")
 	IsFirstUid = pick(SlotIdentity, "LooksLikeFirstAreaUid", "IsFirstAreaUid")
 	BuildSlotKey = pick(SlotIdentity, "SlotKey", "BuildSlotKey")
+	HatchAllFn = pick(EggState, "HatchAllEggs", "HatchAll", "HatchReadyEggs")
+	PlaceAllPetsFn = pick(PlotState, "PlaceAllPets", "PlaceAll", "DeployAllPets")
+	SellAllPetsFn = pick(PlotState, "SellAllPets", "SellAll", "SellInventoryPets")
 
 	-- Oxide: Packages.Networking["RF/EggWorld/AskFieldEggCarry"]
 	local function findCarryRemote()
@@ -1139,6 +1145,25 @@ local function plantCarriedEggs()
 		end
 	end
 	return planted
+end
+
+local function runAutoActions()
+	if autoActionsBusy then return end
+	autoActionsBusy = true
+	task.spawn(function()
+		while autoActions.plant or autoActions.hatch or autoActions.place or autoActions.sell do
+			bindGame()
+			if autoActions.plant and isInPlot() then
+				local n = plantCarriedEggs()
+				if n > 0 then setStatus("Auto planted " .. tostring(n)) end
+			end
+			if autoActions.hatch and HatchAllFn then pcall(HatchAllFn) end
+			if autoActions.place and PlaceAllPetsFn then pcall(PlaceAllPetsFn) end
+			if autoActions.sell and SellAllPetsFn then pcall(SellAllPetsFn) end
+			task.wait(1.0)
+		end
+		autoActionsBusy = false
+	end)
 end
 
 local function returnToBase(speed, opts)
@@ -2459,6 +2484,22 @@ function Api.stopFarm()
 	local hum = getHum()
 	if hum then hum.PlatformStand = false end
 	setStatus("Auto off")
+end
+
+function Api.setAutoAction(name, on)
+	if autoActions[name] == nil then return false end
+	bindGame()
+	if on and name == "hatch" and not HatchAllFn then setStatus("Auto hatch unavailable"); return false end
+	if on and name == "place" and not PlaceAllPetsFn then setStatus("Auto place unavailable"); return false end
+	if on and name == "sell" and not SellAllPetsFn then setStatus("Auto sell unavailable"); return false end
+	autoActions[name] = on and true or false
+	if on then
+		setStatus("Auto " .. name .. " on")
+		runAutoActions()
+	else
+		setStatus("Auto " .. name .. " off")
+	end
+	return true
 end
 
 function Api.setEsp(on)

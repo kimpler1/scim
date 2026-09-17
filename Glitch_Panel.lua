@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V58
+  VER: V59
 ]]
 
-local GLITCH_UI_VER = "V58"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v58"
+local GLITCH_UI_VER = "V59"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v59"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -612,10 +612,12 @@ end
 local mainPage = makePage("Main")
 local espPage = makePage("ESP")
 local playerPage = makePage("Player")
+local autoPage = makePage("Auto")
 
 navItem("Main", "Main")
 navItem("ESP", "ESP")
 navItem("Player", "Player")
+navItem("Auto", "Auto")
 
 local zoneRow = glassRow(mainPage, 34)
 biomeLbl = Instance.new("TextLabel")
@@ -810,6 +812,21 @@ makeSlider(playerPage, "Fly Speed", 20, 250, flySpeedVal, function(v)
 		coreApi.setFly(true, flySpeedVal)
 	end
 end)
+
+-- AUTO
+local function autoActionToggle(label, action)
+	local toggle
+	toggle = makeToggle(autoPage, label, false, function(on)
+		if not loadCore() then toggle.set(false); return end
+		local ok = coreApi.setAutoAction and coreApi.setAutoAction(action, on)
+		if on and not ok then toggle.set(false) end
+	end)
+end
+
+autoActionToggle("Auto Plant All Eggs", "plant")
+autoActionToggle("Auto Hatch Eggs", "hatch")
+autoActionToggle("Auto Place All Pets", "place")
+autoActionToggle("Auto Sell All Pets", "sell")
 
 -- default page
 mainPage.Visible = true
