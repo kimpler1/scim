@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V65
+  VER: V68
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V65"
+local GLITCH_CORE_VER = "V68"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -607,20 +607,82 @@ local function matchesBiome(areaId, biome)
 	return false
 end
 
-local function playerIsCarryingEgg(plr)
-	if not plr or plr == LP then return false end
-	local function hasEggSignal(obj)
-		if not obj then return false end
-		for key, value in pairs(obj:GetAttributes()) do
-			local k = tostring(key):lower()
-			if (k:find("egg", 1, true) or k:find("carry", 1, true))
-				and value ~= nil and value ~= false and value ~= "" then
-				return true
+local function hasEggSignal(obj)
+	if not obj then return false end
+	for key, value in pairs(obj:GetAttributes()) do
+		local k = tostring(key):lower()
+		if (k:find("egg", 1, true) or k:find("carry", 1, true))
+			and value ~= nil and value ~= false and value ~= "" then
+			return true
+		end
+	end
+	local n = obj.Name:lower()
+	return n:find("egg", 1, true) ~= nil or n:find("carry", 1, true) ~= nil
+end
+
+local function valueIdentifiesPlayer(value, plr)
+	if value == nil or not plr then return false end
+	if tonumber(value) == plr.UserId then return true end
+	if typeof(value) == "string" then
+		local s = value:lower()
+		return s == plr.Name:lower() or s == plr.DisplayName:lower()
+	end
+	return false
+end
+
+-- Field-egg snapshots can include the player who picked the egg up even when
+-- the carried model itself is not replicated below that player's character.
+-- Names vary between releases, so accept only explicit carrier/holder fields.
+local function recordBelongsToPlayer(record, plr)
+	if typeof(record) ~= "table" then return false end
+	for key, value in pairs(record) do
+		local k = tostring(key):lower():gsub("_", "")
+		if k:find("carrier", 1, true) or k:find("holder", 1, true)
+			or k:find("carriedby", 1, true) or k:find("carryingplayer", 1, true) then
+			if valueIdentifiesPlayer(value, plr) then return true end
+			if typeof(value) == "table" then
+				for _, nested in pairs(value) do
+					if valueIdentifiesPlayer(nested, plr) then return true end
+				end
 			end
 		end
-		local n = obj.Name:lower()
-		return n:find("egg", 1, true) ~= nil or n:find("carry", 1, true) ~= nil
 	end
+	return false
+end
+
+local carrierWorldCache, carrierWorldCacheAt = {}, 0
+local function visibleWorldCarriers()
+	if tick() - carrierWorldCacheAt < 0.45 then return carrierWorldCache end
+	carrierWorldCacheAt = tick()
+	local found, roots = {}, {}
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LP then
+			local char = plr.Character
+			local root = char and char:FindFirstChild("HumanoidRootPart")
+			if root then table.insert(roots, { player = plr, root = root }) end
+		end
+	end
+	for _, obj in ipairs(Workspace:GetDescendants()) do
+		-- Models are checked once; their child parts would otherwise duplicate
+		-- every candidate and make this scan unnecessarily expensive.
+		if (obj:IsA("Model") or obj:IsA("BasePart")) and hasEggSignal(obj) then
+			local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart", true)
+			if part then
+				for _, candidate in ipairs(roots) do
+					if (part.Position - candidate.root.Position).Magnitude <= 11 then
+						found[candidate.player] = obj
+						break
+					end
+				end
+			end
+		end
+	end
+	carrierWorldCache = found
+	return found
+end
+
+local function playerIsCarryingEgg(plr, records, worldCarriers)
+	if not plr or plr == LP then return false end
 	if plr:GetAttribute("IsCarryingEgg") == true or hasEggSignal(plr) then return true end
 	local char = plr.Character
 	if not char then return false end
@@ -641,6 +703,12 @@ local function playerIsCarryingEgg(plr)
 			if hasEggSignal(item) or item:GetAttribute("IsEgg") == true or item:GetAttribute("EggUid") ~= nil then return true end
 		end
 	end
+	if records then
+		for _, record in pairs(records) do
+			if recordBelongsToPlayer(record, plr) then return true end
+		end
+	end
+	if (worldCarriers or visibleWorldCarriers())[plr] then return true end
 	return heldNonCombatTool
 end
 
@@ -1656,10 +1724,10 @@ local function peelThenEscape(reclaimDepth)
 	return escaped ~= false or isActuallyCarrying() or isInPlot()
 end
 
-local function carriedEggValue(plr)
+local function carriedEggValue(plr, records)
 	local char = plr and plr.Character
 	if not char then return 0 end
-	local records = recordsByUid()
+	records = records or recordsByUid()
 	for _, item in ipairs(char:GetChildren()) do
 		if item:IsA("Tool") or item:IsA("Model") then
 			local uid = item:GetAttribute("Uid") or item:GetAttribute("EggUid")
@@ -1677,19 +1745,28 @@ local function carriedEggValue(plr)
 			if record then return bestEggScore(record, 0), recordRarity(record) end
 		end
 	end
+	-- When the egg visual is not parented to the target's character, retain
+	-- the rarity from the globally replicated carrier record for prioritising.
+	for _, record in pairs(records) do
+		if recordBelongsToPlayer(record, plr) then
+			return bestEggScore(record, 0), recordRarity(record)
+		end
+	end
 	return 0, "Common"
 end
 
 local function nearestEggCarrier()
 	local hrp = getHRP()
 	if not hrp then return nil end
+	local records = recordsByUid()
+	local worldCarriers = visibleWorldCarriers()
 	local best, bestDist, bestValue, bestRarity
 	for _, plr in ipairs(Players:GetPlayers()) do
 		local char = plr.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart")
-		if root and playerIsCarryingEgg(plr) then
+		if root and playerIsCarryingEgg(plr, records, worldCarriers) then
 			local dist = (root.Position - hrp.Position).Magnitude
-			local value, rarity = carriedEggValue(plr)
+			local value, rarity = carriedEggValue(plr, records)
 			if not bestValue or value > bestValue or (value == bestValue and dist < bestDist) then
 				best, bestDist, bestValue, bestRarity = plr, dist, value, rarity
 			end
