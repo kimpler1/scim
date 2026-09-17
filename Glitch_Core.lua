@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V68
+  VER: V69
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V68"
+local GLITCH_CORE_VER = "V69"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -60,13 +60,13 @@ local CFG = {
 
 local EggState, PlotState, SlotIdentity, AssetsData, SaveModule
 local IsEggReadyFn, BeginHatchFn, FinishHatchFn, WearEggToolFn, PlantEggFn
-local SellPetRemote, EquipBestPetsRemote, BatSwingRemote
+local EquipBestPetsRemote, BatSwingRemote
 local CarryFn, SnapshotFn, SyncSnapshot, CarrySignal
 local GetRespawn, GetPlot, InPlot, IsFirstUid, BuildSlotKey
 local AreasFolder, GuardAreas, AreaEggs
 local Bound = false
 local autoFarm, carrying, farmBusy = false, false, false
-local autoActions = { plant = false, hatch = false, equip = false, sell = false }
+local autoActions = { plant = false, hatch = false, equip = false }
 local autoActionsBusy = false
 local connections = {}
 local espFlags = { players = false, eggs = false, beasts = false }
@@ -172,7 +172,6 @@ local function bindGame()
 	FinishHatchFn = pick(EggState, "FinishHatch", "RequestCompleteHatchEgg")
 	WearEggToolFn = pick(EggState, "WearEggTool", "RequestEquipTool")
 	PlantEggFn = pick(EggState, "PlantEgg", "RequestPlaceEgg")
-	SellPetRemote = findRemoteByPathOrName("PetSatchel/SellPet", "SellPet")
 	EquipBestPetsRemote = findRemoteByPathOrName("Haul/WearBest", "WearBest")
 		or findRemoteByPathOrName("PenRoster/ConfirmEquipBestBadge", "ConfirmEquipBestBadge")
 	BatSwingRemote = findRemoteByPathOrName("BatSwing/Trigger", "BatSwing")
@@ -1336,26 +1335,11 @@ local function autoHatchReadyEggs()
 	return count
 end
 
-local function autoSellUnlockedPets()
-	if not SellPetRemote or isActuallyCarrying() then return 0 end
-	local save = getSave()
-	local inventory = save and save.Inventory
-	if typeof(inventory) ~= "table" then return 0 end
-	local sold = 0
-	for uid, pet in pairs(inventory) do
-		if typeof(uid) == "string" and typeof(pet) == "table" and not pet.Locked then
-			if invokeRemote(SellPetRemote, uid) then sold += 1 end
-			task.wait(0.1)
-		end
-	end
-	return sold
-end
-
 local function runAutoActions()
 	if autoActionsBusy then return end
 	autoActionsBusy = true
 	task.spawn(function()
-		while autoActions.plant or autoActions.hatch or autoActions.equip or autoActions.sell do
+		while autoActions.plant or autoActions.hatch or autoActions.equip do
 			bindGame()
 			if autoActions.plant then
 				local n = autoPlantOwnedEggs()
@@ -1366,10 +1350,6 @@ local function runAutoActions()
 				if n > 0 then setStatus("Auto hatched " .. tostring(n)) end
 			end
 			if autoActions.equip and EquipBestPetsRemote then invokeRemote(EquipBestPetsRemote) end
-			if autoActions.sell then
-				local n = autoSellUnlockedPets()
-				if n > 0 then setStatus("Auto sold " .. tostring(n)) end
-			end
 			task.wait(3.0)
 		end
 		autoActionsBusy = false
@@ -2717,7 +2697,6 @@ function Api.setAutoAction(name, on)
 	if on and name == "plant" and (not PlantEggFn or not WearEggToolFn or not SaveModule) then setStatus("Auto plant unavailable"); return false end
 	if on and name == "hatch" and (not IsEggReadyFn or not BeginHatchFn or not FinishHatchFn or not SaveModule) then setStatus("Auto hatch unavailable"); return false end
 	if on and name == "equip" and not EquipBestPetsRemote then setStatus("Auto equip unavailable"); return false end
-	if on and name == "sell" and (not SellPetRemote or not SaveModule) then setStatus("Auto sell unavailable"); return false end
 	autoActions[name] = on and true or false
 	if on then
 		setStatus("Auto " .. name .. " on")
