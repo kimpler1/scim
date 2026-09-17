@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V62
+  VER: V64
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V62"
+local GLITCH_CORE_VER = "V64"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -1718,18 +1718,18 @@ end
 local function interceptCarrierOnce()
 	local target, rarity = nearestEggCarrier()
 	if not target then setStatus("No egg carrier"); task.wait(0.6); return false end
-	if not BatSwingRemote then setStatus("Bat aura unavailable"); task.wait(0.8); return false end
 	local bat = findBatTool()
+	if not bat then setStatus("Bat not equipped"); task.wait(0.8); return false end
 	local hum = getHum()
-	if hum and bat then pcall(function() hum:EquipTool(bat) end) end
+	if hum then pcall(function() hum:EquipTool(bat) end) end
 	local root = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
 	local me = getHRP()
 	if not (root and me) then return false end
 	setStatus("Track " .. target.DisplayName .. " · " .. tostring(rarity))
-	-- Verified from Oxide: the hit is server-side RE/BatSwing/Trigger,
-	-- not Tool:Activate().  Stay in aura range while following the carrier.
+	-- Probe V63 confirmed RE/BatSwing/Trigger requires a rotating signed token.
+	-- Tool:Activate generates that token; a blank direct remote call is ignored.
 	if not stealAlong(buildStealPath(me.Position, root.Position), CFG.approachSpeed) then return false end
-	for _ = 1, 18 do
+	for _ = 1, 46 do
 		root = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
 		if not root or not playerIsCarryingEgg(target) then break end
 		me = getHRP()
@@ -1739,9 +1739,9 @@ local function interceptCarrierOnce()
 		me = getHRP()
 		if me and (root.Position - me.Position).Magnitude <= 20 then
 			setStatus("Bat aura · " .. target.DisplayName)
-			invokeRemote(BatSwingRemote)
+			pcall(function() bat:Activate() end)
 		end
-		task.wait(0.2)
+		task.wait(0.08)
 	end
 	local dropPos = root and root.Position or getHRP().Position
 	local untilT, dropped = tick() + 3.0, nil
