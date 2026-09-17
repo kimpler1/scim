@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V57
+  VER: V58
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V57"
+local GLITCH_CORE_VER = "V58"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -559,6 +559,24 @@ end
 local function matchesBiome(areaId, biome)
 	for _, alias in ipairs(biomeAliases(biome)) do
 		if areaMatches(areaId, alias) then return true end
+	end
+	return false
+end
+
+local function playerIsCarryingEgg(plr)
+	if not plr or plr == LP then return false end
+	if plr:GetAttribute("IsCarryingEgg") == true then return true end
+	local char = plr.Character
+	if not char then return false end
+	if char:GetAttribute("IsCarryingEgg") == true then return true end
+	for _, item in ipairs(char:GetChildren()) do
+		if item:IsA("Tool") or item:IsA("Model") then
+			local name = item.Name:lower()
+			if name:find("egg", 1, true) or name:find("carry", 1, true)
+				or item:GetAttribute("IsEgg") == true or item:GetAttribute("Uid") ~= nil then
+				return true
+			end
+		end
 	end
 	return false
 end
@@ -1471,6 +1489,112 @@ local function peelThenEscape(reclaimDepth)
 	return escaped ~= false or isActuallyCarrying() or isInPlot()
 end
 
+local function carriedEggValue(plr)
+	local char = plr and plr.Character
+	if not char then return 0 end
+	local records = recordsByUid()
+	for _, item in ipairs(char:GetChildren()) do
+		if item:IsA("Tool") or item:IsA("Model") then
+			local uid = item:GetAttribute("Uid") or item:GetAttribute("EggUid")
+			local record = typeof(uid) == "string" and records[uid] or nil
+			if not record then
+				local name = item.Name:lower()
+				if name:find("egg", 1, true) or name:find("carry", 1, true) then
+					record = {
+					Rarity = item:GetAttribute("Rarity"),
+					AssetCategory = item:GetAttribute("AssetCategory") or item.Name,
+					AssetScale = item:GetAttribute("AssetScale") or item:GetAttribute("Scale"),
+				}
+				end
+			end
+			if record then return bestEggScore(record, 0), recordRarity(record) end
+		end
+	end
+	return 0, "Common"
+end
+
+local function nearestEggCarrier()
+	local hrp = getHRP()
+	if not hrp then return nil end
+	local best, bestDist, bestValue, bestRarity
+	for _, plr in ipairs(Players:GetPlayers()) do
+		local char = plr.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		if root and playerIsCarryingEgg(plr) then
+			local dist = (root.Position - hrp.Position).Magnitude
+			local value, rarity = carriedEggValue(plr)
+			if not bestValue or value > bestValue or (value == bestValue and dist < bestDist) then
+				best, bestDist, bestValue, bestRarity = plr, dist, value, rarity
+			end
+		end
+	end
+	return best, bestRarity
+end
+
+local function findBatTool()
+	local function scan(container)
+		if not container then return nil end
+		for _, item in ipairs(container:GetChildren()) do
+			if item:IsA("Tool") then
+				local name = item.Name:lower()
+				if name:find("bat", 1, true) or name:find("club", 1, true) then return item end
+			end
+		end
+	end
+	return scan(getChar()) or scan(LP:FindFirstChild("Backpack"))
+end
+
+local function findDroppedNear(position, radius)
+	local recs = recordsByUid()
+	local visible, anonymous = visibleDroppedCandidates(recs)
+	local best, bestDist
+	local function consider(candidate)
+		local d = (candidate.Position - position).Magnitude
+		if d <= radius and (not bestDist or d < bestDist) then best, bestDist = candidate, d end
+	end
+	for uid, rec in pairs(recs) do
+		if rec.State == "Dropped" and visible[uid] then consider(visible[uid]) end
+	end
+	for _, candidate in ipairs(anonymous) do consider(candidate) end
+	return best
+end
+
+local function interceptCarrierOnce()
+	local target, rarity = nearestEggCarrier()
+	if not target then setStatus("No egg carrier"); task.wait(0.6); return false end
+	local bat = findBatTool()
+	if not bat then setStatus("Bat not found"); task.wait(0.8); return false end
+	local hum = getHum()
+	if hum then pcall(function() hum:EquipTool(bat) end) end
+	local root = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+	local me = getHRP()
+	if not (root and me) then return false end
+	setStatus("Track " .. target.DisplayName .. " · " .. tostring(rarity))
+	if not stealAlong(buildStealPath(me.Position, root.Position), CFG.approachSpeed) then return false end
+	for _ = 1, 5 do
+		root = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+		if not root or not playerIsCarryingEgg(target) then break end
+		me = getHRP()
+		if me and (root.Position - me.Position).Magnitude > 9 then
+			stealMoveTo(root.Position.X, root.Position.Z, CFG.approachSpeed)
+		end
+		setStatus("Hit " .. target.DisplayName)
+		pcall(function() bat:Activate() end)
+		task.wait(0.35)
+	end
+	local dropPos = root and root.Position or getHRP().Position
+	local untilT, dropped = tick() + 2.0, nil
+	while tick() < untilT and autoFarm do
+		dropped = findDroppedNear(dropPos, 70)
+		if dropped then break end
+		task.wait(0.1)
+	end
+	if not dropped then setStatus("Carrier drop not found"); return false end
+	setStatus("Take carrier drop")
+	if not approachAndSteal(dropped, CFG.approachSpeed) then return false end
+	return peelThenEscape()
+end
+
 local function resetFarmAttempt()
 	carrying = false
 	setStatus("Reset 4")
@@ -1501,6 +1625,11 @@ local function farmOnce()
 		end
 		if isInPlot() then plantCarriedEggs() end
 		carrying = false
+		return
+	end
+
+	if CFG.targetMode == "intercept" then
+		if leaveBaseForFarm() then interceptCarrierOnce() end
 		return
 	end
 
@@ -2303,7 +2432,7 @@ function Api.setConfig(t)
 	if t.biomes then CFG.biomes = t.biomes end
 	if t.approachSpeed then CFG.approachSpeed = math.clamp(t.approachSpeed, 50, 1000) end
 	if t.escapeSpeed then CFG.escapeSpeed = math.clamp(t.escapeSpeed, 50, 1000) end
-	if t.targetMode == "all" or t.targetMode == "best" or t.targetMode == "dropped" then CFG.targetMode = t.targetMode end
+	if t.targetMode == "all" or t.targetMode == "best" or t.targetMode == "dropped" or t.targetMode == "intercept" then CFG.targetMode = t.targetMode end
 	if typeof(t.status) == "function" then CFG.status = t.status end
 end
 
