@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V71
+  VER: V72
 ]]
 
-local GLITCH_UI_VER = "V71"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v71"
+local GLITCH_UI_VER = "V72"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v72"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -349,7 +349,7 @@ local function makePage(name)
 	pad(f, 16, 14, 16, 14)
 	local list = Instance.new("UIListLayout")
 	-- One clear, consistent gap between every row on every page.
-	list.Padding = UDim.new(0, 11)
+	list.Padding = UDim.new(0, 9)
 	list.Parent = f
 	pages[name] = f
 	return f
