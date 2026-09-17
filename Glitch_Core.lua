@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V73
+  VER: V74
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V73"
+local GLITCH_CORE_VER = "V74"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -261,6 +261,7 @@ end
 -- MUST be declared before stealMoveTo (Lua local scope)
 local lastEggUid, lastEggPos, lastStealAt = nil, nil, 0
 local rigSyncPatched = false
+local animationHumanoid
 
 local function isActuallyCarrying()
 	local pg = LP:FindFirstChildOfClass("PlayerGui")
@@ -363,13 +364,28 @@ local function patchRigSyncKnockback()
 	return rigSyncPatched
 end
 
--- Boblo: kill PushBack + optional humanoid clone (chicken knockback)
+local function restartDefaultAnimations(char, hum)
+	if animationHumanoid == hum then return end
+	animationHumanoid = hum
+	local animate = char and char:FindFirstChild("Animate")
+	if animate and animate:IsA("LocalScript") then
+		-- The old farm used to replace Humanoid. Roblox Animate can retain a
+		-- reference to that deleted Humanoid, which leaves the player gliding.
+		-- Restart it once against the current, original Humanoid instead.
+		pcall(function() animate.Disabled = true end)
+		task.defer(function()
+			if animate.Parent == char then pcall(function() animate.Disabled = false end) end
+		end)
+	end
+end
+
+-- Keep the anti-push preparation, but never replace Humanoid. Replacing it
+-- breaks the default running animation even after Auto Farm is turned off.
 local function swapStealHumanoid()
 	local char = getChar()
 	if not char then return false end
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if not hum then return false end
-	if hum:GetAttribute("SAE_SafeHum") == true then return true end
 
 	for _, d in ipairs(char:GetDescendants()) do
 		if d:IsA("LocalScript") and string.find(d.Name, "Push", 1, true) then
@@ -380,22 +396,18 @@ local function swapStealHumanoid()
 		end
 	end
 
-	hum.Archivable = true
-	local clone = hum:Clone()
-	if not clone then return false end
-	clone:SetAttribute("SAE_SafeHum", true)
-	clone.Sit = false
-	clone.PlatformStand = false
-	clone.AutoRotate = true
-	hum:Destroy()
-	clone.Parent = char
+	hum.Sit = false
+	hum.PlatformStand = false
+	hum.AutoRotate = true
 	local hrp = char:FindFirstChild("HumanoidRootPart")
 	if hrp then
+		pcall(function() hrp.Anchored = false end)
 		hrp.AssemblyLinearVelocity = Vector3.zero
 		hrp.AssemblyAngularVelocity = Vector3.zero
 	end
+	restartDefaultAnimations(char, hum)
 	pcall(function()
-		clone:ChangeState(Enum.HumanoidStateType.Running)
+		hum:ChangeState(Enum.HumanoidStateType.Running)
 	end)
 	return true
 end
@@ -2681,8 +2693,21 @@ end
 function Api.stopFarm()
 	autoFarm = false
 	cancelManualDeliverAssist()
+	local root = getHRP()
+	if root then
+		pcall(function() root.Anchored = false end)
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+	end
 	local hum = getHum()
-	if hum then hum.PlatformStand = false end
+	if hum then
+		hum.Sit = false
+		hum.PlatformStand = false
+		hum.AutoRotate = true
+		pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+		pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+		restartDefaultAnimations(getChar(), hum)
+	end
 	setStatus("Auto off")
 end
 
