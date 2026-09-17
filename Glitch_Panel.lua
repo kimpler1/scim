@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V69
+  VER: V70
 ]]
 
-local GLITCH_UI_VER = "V69"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v69"
+local GLITCH_UI_VER = "V70"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v70"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -348,7 +348,8 @@ local function makePage(name)
 	f.Parent = content
 	pad(f, 16, 14, 16, 14)
 	local list = Instance.new("UIListLayout")
-	list.Padding = UDim.new(0, 6)
+	-- One compact, consistent gap between every row on every page.
+	list.Padding = UDim.new(0, 5)
 	list.Parent = f
 	pages[name] = f
 	return f
@@ -655,13 +656,7 @@ nextB.BorderSizePixel = 0
 nextB.Parent = zoneRow
 corner(nextB, 8)
 
-local functionGap = Instance.new("Frame")
-functionGap.Size = UDim2.new(1, 0, 0, 2)
-functionGap.BackgroundTransparency = 1
-functionGap.BorderSizePixel = 0
-functionGap.Parent = mainPage
-
-local allEggsToggle, bestEggToggle, droppedEggsToggle, interceptToggle
+local allEggsToggle, bestEggToggle, droppedEggsToggle
 allEggsToggle = makeToggle(mainPage, "Steal All Eggs", false, function(on)
 	if not loadCore() then
 		allEggsToggle.set(false)
@@ -671,7 +666,6 @@ allEggsToggle = makeToggle(mainPage, "Steal All Eggs", false, function(on)
 		targetMode = "all"
 		if bestEggToggle then bestEggToggle.set(false) end
 		if droppedEggsToggle then droppedEggsToggle.set(false) end
-		if interceptToggle then interceptToggle.set(false) end
 	end
 	pushConfig()
 	autoOn = on
@@ -692,7 +686,6 @@ bestEggToggle = makeToggle(mainPage, "Steal Best Egg", false, function(on)
 		targetMode = "best"
 		if allEggsToggle then allEggsToggle.set(false) end
 		if droppedEggsToggle then droppedEggsToggle.set(false) end
-		if interceptToggle then interceptToggle.set(false) end
 	end
 	pushConfig()
 	autoOn = on
@@ -713,31 +706,12 @@ droppedEggsToggle = makeToggle(mainPage, "Recover Dropped Eggs", false, function
 		targetMode = "dropped"
 		if allEggsToggle then allEggsToggle.set(false) end
 		if bestEggToggle then bestEggToggle.set(false) end
-		if interceptToggle then interceptToggle.set(false) end
 	end
 	pushConfig()
 	autoOn = on
 	if on then
 		coreApi.startFarm()
 	elseif targetMode == "dropped" then
-		coreApi.stopFarm()
-		setStatus("Auto off")
-	end
-end)
-
-interceptToggle = makeToggle(mainPage, "Bat Aura", false, function(on)
-	if not loadCore() then interceptToggle.set(false); return end
-	if on then
-		targetMode = "intercept"
-		if allEggsToggle then allEggsToggle.set(false) end
-		if bestEggToggle then bestEggToggle.set(false) end
-		if droppedEggsToggle then droppedEggsToggle.set(false) end
-	end
-	pushConfig()
-	autoOn = on
-	if on then
-		coreApi.startFarm()
-	elseif targetMode == "intercept" then
 		coreApi.stopFarm()
 		setStatus("Auto off")
 	end

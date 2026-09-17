@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V69
+  VER: V70
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V69"
+local GLITCH_CORE_VER = "V70"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -1858,11 +1858,6 @@ local function farmOnce()
 		return
 	end
 
-	if CFG.targetMode == "intercept" then
-		if leaveBaseForFarm() then interceptCarrierOnce() end
-		return
-	end
-
 	if not leaveBaseForFarm() then
 		setStatus("Base exit abort")
 		return
@@ -2662,7 +2657,7 @@ function Api.setConfig(t)
 	if t.biomes then CFG.biomes = t.biomes end
 	if t.approachSpeed then CFG.approachSpeed = math.clamp(t.approachSpeed, 50, 1000) end
 	if t.escapeSpeed then CFG.escapeSpeed = math.clamp(t.escapeSpeed, 50, 1000) end
-	if t.targetMode == "all" or t.targetMode == "best" or t.targetMode == "dropped" or t.targetMode == "intercept" then CFG.targetMode = t.targetMode end
+	if t.targetMode == "all" or t.targetMode == "best" or t.targetMode == "dropped" then CFG.targetMode = t.targetMode end
 	if typeof(t.status) == "function" then CFG.status = t.status end
 end
 
