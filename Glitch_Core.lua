@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V64
+  VER: V65
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V64"
+local GLITCH_CORE_VER = "V65"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -625,12 +625,23 @@ local function playerIsCarryingEgg(plr)
 	local char = plr.Character
 	if not char then return false end
 	if char:GetAttribute("IsCarryingEgg") == true or hasEggSignal(char) then return true end
+	-- Carried eggs are not consistently named/attributed on other clients.
+	-- The reliable visible fallback is a non-combat Tool actually equipped in
+	-- the target's character (not their Backpack).
+	local heldNonCombatTool = false
 	for _, item in ipairs(char:GetDescendants()) do
-		if item:IsA("Tool") or item:IsA("Model") or item:IsA("BasePart") then
+		if item:IsA("Tool") then
+			if hasEggSignal(item) or item:GetAttribute("IsEgg") == true or item:GetAttribute("EggUid") ~= nil then return true end
+			local name = item.Name:lower()
+			if not (name:find("bat", 1, true) or name:find("club", 1, true)
+				or name:find("sword", 1, true) or name:find("blade", 1, true)) then
+				heldNonCombatTool = true
+			end
+		elseif item:IsA("Model") or item:IsA("BasePart") then
 			if hasEggSignal(item) or item:GetAttribute("IsEgg") == true or item:GetAttribute("EggUid") ~= nil then return true end
 		end
 	end
-	return false
+	return heldNonCombatTool
 end
 
 local function findZoneFolder(name)
