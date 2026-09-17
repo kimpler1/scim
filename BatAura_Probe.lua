@@ -5,7 +5,7 @@
 
 local CoreGui = game:GetService("CoreGui")
 local ProximityPromptService = game:GetService("ProximityPromptService")
-local PROBE_VER = "V63"
+local PROBE_VER = "V66"
 
 local ENV = (getgenv and getgenv()) or _G
 ENV.SAE_BAT_AURA_PROBE = true
@@ -155,6 +155,43 @@ if player.Character then watchContainer(player.Character) end
 ProximityPromptService.PromptTriggered:Connect(function(prompt, owner)
 	if ENV.SAE_BAT_AURA_PROBE and owner == player then addLine("Prompt " .. prompt:GetFullName()) end
 end)
+
+-- Carrier state is not exposed through a public API.  Watch only changes that
+-- replicate onto another player's character after they take an egg from a nest.
+local bodyParts = { HumanoidRootPart = true, Head = true, Torso = true, UpperTorso = true, LowerTorso = true,
+	LeftHand = true, RightHand = true, LeftFoot = true, RightFoot = true, LeftLowerArm = true, RightLowerArm = true,
+	LeftUpperArm = true, RightUpperArm = true, LeftLowerLeg = true, RightLowerLeg = true, LeftUpperLeg = true, RightUpperLeg = true }
+local function carrierDescribe(inst)
+	local attrs = {}
+	for key, value in pairs(inst:GetAttributes()) do table.insert(attrs, tostring(key) .. "=" .. tostring(value)) end
+	return inst.ClassName .. " " .. inst:GetFullName() .. (#attrs > 0 and " {" .. table.concat(attrs, ", ") .. "}" or "")
+end
+local function watchCarrierCharacter(plr, char)
+	char.DescendantAdded:Connect(function(inst)
+		if not ENV.SAE_BAT_AURA_PROBE then return end
+		if inst:IsA("Tool") or inst:IsA("Model") or (inst:IsA("BasePart") and not bodyParts[inst.Name]) then
+			addLine("CARRIER+ " .. plr.Name .. " · " .. carrierDescribe(inst))
+		end
+	end)
+	char.AttributeChanged:Connect(function(name)
+		if ENV.SAE_BAT_AURA_PROBE then
+			local n = tostring(name):lower()
+			if n:find("egg", 1, true) or n:find("carry", 1, true) or n:find("hold", 1, true) then
+				addLine("CARRIER ATTR " .. plr.Name .. " · " .. tostring(name) .. "=" .. tostring(char:GetAttribute(name)))
+			end
+		end
+	end)
+end
+local function watchCarrierPlayer(plr)
+	if plr == player then return end
+	plr.CharacterAdded:Connect(function(char)
+		addLine("CARRIER character ready · " .. plr.Name)
+		watchCarrierCharacter(plr, char)
+	end)
+	if plr.Character then watchCarrierCharacter(plr, plr.Character) end
+end
+for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do watchCarrierPlayer(plr) end
+game:GetService("Players").PlayerAdded:Connect(watchCarrierPlayer)
 
 if not (hookmetamethod and getnamecallmethod and newcclosure) then
 	title.Text = "Bat Aura Probe · executor не поддерживает network hook"
