@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V59
+  VER: V60
 ]]
 
-local GLITCH_UI_VER = "V59"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v59"
+local GLITCH_UI_VER = "V60"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v60"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -825,7 +825,7 @@ end
 
 autoActionToggle("Auto Plant All Eggs", "plant")
 autoActionToggle("Auto Hatch Eggs", "hatch")
-autoActionToggle("Auto Place All Pets", "place")
+autoActionToggle("Auto Equip Best Pets", "equip")
 autoActionToggle("Auto Sell All Pets", "sell")
 
 -- default page
