@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V60
+  VER: V61
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V60"
+local GLITCH_CORE_VER = "V61"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -60,7 +60,7 @@ local CFG = {
 
 local EggState, PlotState, SlotIdentity, AssetsData, SaveModule
 local IsEggReadyFn, BeginHatchFn, FinishHatchFn, WearEggToolFn, PlantEggFn
-local SellPetRemote, EquipBestPetsRemote
+local SellPetRemote, EquipBestPetsRemote, BatSwingRemote
 local CarryFn, SnapshotFn, SyncSnapshot, CarrySignal
 local GetRespawn, GetPlot, InPlot, IsFirstUid, BuildSlotKey
 local AreasFolder, GuardAreas, AreaEggs
@@ -175,6 +175,7 @@ local function bindGame()
 	SellPetRemote = findRemoteByPathOrName("PetSatchel/SellPet", "SellPet")
 	EquipBestPetsRemote = findRemoteByPathOrName("Haul/WearBest", "WearBest")
 		or findRemoteByPathOrName("PenRoster/ConfirmEquipBestBadge", "ConfirmEquipBestBadge")
+	BatSwingRemote = findRemoteByPathOrName("BatSwing/Trigger", "BatSwing")
 
 	-- Oxide: Packages.Networking["RF/EggWorld/AskFieldEggCarry"]
 	local function findCarryRemote()
@@ -608,17 +609,25 @@ end
 
 local function playerIsCarryingEgg(plr)
 	if not plr or plr == LP then return false end
-	if plr:GetAttribute("IsCarryingEgg") == true then return true end
-	local char = plr.Character
-	if not char then return false end
-	if char:GetAttribute("IsCarryingEgg") == true then return true end
-	for _, item in ipairs(char:GetChildren()) do
-		if item:IsA("Tool") or item:IsA("Model") then
-			local name = item.Name:lower()
-			if name:find("egg", 1, true) or name:find("carry", 1, true)
-				or item:GetAttribute("IsEgg") == true or item:GetAttribute("Uid") ~= nil then
+	local function hasEggSignal(obj)
+		if not obj then return false end
+		for key, value in pairs(obj:GetAttributes()) do
+			local k = tostring(key):lower()
+			if (k:find("egg", 1, true) or k:find("carry", 1, true))
+				and value ~= nil and value ~= false and value ~= "" then
 				return true
 			end
+		end
+		local n = obj.Name:lower()
+		return n:find("egg", 1, true) ~= nil or n:find("carry", 1, true) ~= nil
+	end
+	if plr:GetAttribute("IsCarryingEgg") == true or hasEggSignal(plr) then return true end
+	local char = plr.Character
+	if not char then return false end
+	if char:GetAttribute("IsCarryingEgg") == true or hasEggSignal(char) then return true end
+	for _, item in ipairs(char:GetDescendants()) do
+		if item:IsA("Tool") or item:IsA("Model") or item:IsA("BasePart") then
+			if hasEggSignal(item) or item:GetAttribute("IsEgg") == true or item:GetAttribute("EggUid") ~= nil then return true end
 		end
 	end
 	return false
@@ -1709,30 +1718,36 @@ end
 local function interceptCarrierOnce()
 	local target, rarity = nearestEggCarrier()
 	if not target then setStatus("No egg carrier"); task.wait(0.6); return false end
+	if not BatSwingRemote then setStatus("Bat aura unavailable"); task.wait(0.8); return false end
 	local bat = findBatTool()
-	if not bat then setStatus("Bat not found"); task.wait(0.8); return false end
 	local hum = getHum()
-	if hum then pcall(function() hum:EquipTool(bat) end) end
+	if hum and bat then pcall(function() hum:EquipTool(bat) end) end
 	local root = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
 	local me = getHRP()
 	if not (root and me) then return false end
 	setStatus("Track " .. target.DisplayName .. " · " .. tostring(rarity))
+	-- Verified from Oxide: the hit is server-side RE/BatSwing/Trigger,
+	-- not Tool:Activate().  Stay in aura range while following the carrier.
 	if not stealAlong(buildStealPath(me.Position, root.Position), CFG.approachSpeed) then return false end
-	for _ = 1, 5 do
+	for _ = 1, 18 do
 		root = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
 		if not root or not playerIsCarryingEgg(target) then break end
 		me = getHRP()
-		if me and (root.Position - me.Position).Magnitude > 9 then
+		if me and (root.Position - me.Position).Magnitude > 7 then
 			stealMoveTo(root.Position.X, root.Position.Z, CFG.approachSpeed)
 		end
-		setStatus("Hit " .. target.DisplayName)
-		pcall(function() bat:Activate() end)
-		task.wait(0.35)
+		me = getHRP()
+		if me and (root.Position - me.Position).Magnitude <= 20 then
+			setStatus("Bat aura · " .. target.DisplayName)
+			invokeRemote(BatSwingRemote)
+		end
+		task.wait(0.2)
 	end
 	local dropPos = root and root.Position or getHRP().Position
-	local untilT, dropped = tick() + 2.0, nil
+	local untilT, dropped = tick() + 3.0, nil
 	while tick() < untilT and autoFarm do
 		dropped = findDroppedNear(dropPos, 70)
+		if not dropped then dropped = findReclaimEgg() end
 		if dropped then break end
 		task.wait(0.1)
 	end
