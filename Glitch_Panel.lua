@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V61
+  VER: V62
 ]]
 
-local GLITCH_UI_VER = "V61"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v61"
+local GLITCH_UI_VER = "V62"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v62"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -725,7 +725,7 @@ droppedEggsToggle = makeToggle(mainPage, "Recover Dropped Eggs", false, function
 	end
 end)
 
-interceptToggle = makeToggle(mainPage, "Intercept Egg Carrier", false, function(on)
+interceptToggle = makeToggle(mainPage, "Bat Aura — Egg Carrier", false, function(on)
 	if not loadCore() then interceptToggle.set(false); return end
 	if on then
 		targetMode = "intercept"
