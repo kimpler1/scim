@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V76
+  VER: V77
 ]]
 
-local GLITCH_UI_VER = "V76"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v76"
+local GLITCH_UI_VER = "V77"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v77"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -780,7 +780,7 @@ flyToggle = makeToggle(playerPage, "Fly (WASD + Space/Ctrl)", false, function(on
 	end
 	if coreApi.setFly then coreApi.setFly(on, flySpeedVal) end
 end)
-makeSlider(playerPage, "Fly Speed", 20, 250, flySpeedVal, function(v)
+makeSlider(playerPage, "Fly Speed", 20, 500, flySpeedVal, function(v)
 	flySpeedVal = v
 	if flyToggle.get() and coreApi and coreApi.setFly then
 		coreApi.setFly(true, flySpeedVal)

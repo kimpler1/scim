@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V76
+  VER: V77
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V76"
+local GLITCH_CORE_VER = "V77"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -74,11 +74,12 @@ local espMap = {} -- [key] = { hl, bb, label, kind }
 local espFolder, espConn
 local walkSpeedOn, walkSpeedVal = false, 32
 local flyOn, flySpeed = false, 60
-local infiniteJumpOn, noClipOn = false, false
+local infiniteJumpOn, noClipOn, flyCollisionBypass = false, false, false
 local moveConn
 local flyConn = nil
 local infiniteJumpConn, noClipConn
 local noClipOriginal = setmetatable({}, { __mode = "k" })
+local refreshNoClip
 local freezeMoveForValidate = false -- pause WS boost / fly travel during guard-hit validate
 local deliverAssistConn = nil
 local deliverAssistBusy = false
@@ -2571,10 +2572,12 @@ local function setWalkSpeedEnabled(on)
 	end
 end
 
--- V21 fly: NOT Anchored (Anchored = client-only → no egg steal + snap on disable).
--- Pattern = Oxide FlyToPoint physics (CFrame + AssemblyLinearVelocity) + flat WASD.
+-- Fly stays unanchored, uses the camera's full 3D direction, and temporarily
+-- shares No Clip's collision bypass so the floor cannot pull it underground.
 local function stopFly()
 	flyOn = false
+	flyCollisionBypass = false
+	if refreshNoClip then refreshNoClip() end
 	if flyConn then
 		pcall(function() flyConn:Disconnect() end)
 		flyConn = nil
@@ -2612,9 +2615,12 @@ local function startFly()
 	local ac = installClientAc()
 	hardenCharacterSignals()
 	flyOn = true
+	flyCollisionBypass = true
+	if refreshNoClip then refreshNoClip() end
 	-- Must stay unanchored so server replication + egg remotes see real position
 	hrp.Anchored = false
 	hum.PlatformStand = true
+	local flyPosition = hrp.Position
 
 	flyConn = RunService.Heartbeat:Connect(function(dt)
 		if not flyOn or autoFarm then return end
@@ -2629,6 +2635,7 @@ local function startFly()
 		humanoid.PlatformStand = true
 
 		if freezeMoveForValidate then
+			flyPosition = root.Position
 			root.AssemblyLinearVelocity = Vector3.zero
 			root.AssemblyAngularVelocity = Vector3.zero
 			return
@@ -2636,16 +2643,12 @@ local function startFly()
 
 		local look = cam.CFrame.LookVector
 		local right = cam.CFrame.RightVector
-		local flatLook = Vector3.new(look.X, 0, look.Z)
-		flatLook = flatLook.Magnitude > 0.001 and flatLook.Unit or Vector3.new(0, 0, -1)
-		local flatRight = Vector3.new(right.X, 0, right.Z)
-		flatRight = flatRight.Magnitude > 0.001 and flatRight.Unit or Vector3.new(1, 0, 0)
 
 		local dir = Vector3.zero
-		if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + flatLook end
-		if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - flatLook end
-		if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - flatRight end
-		if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + flatRight end
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + look end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - look end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - right end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + right end
 		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0, 1, 0) end
 		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
 			or UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
@@ -2655,17 +2658,19 @@ local function startFly()
 		local stepDt = math.min(dt, 0.1)
 		if dir.Magnitude > 0.05 then
 			local unit = dir.Unit
-			local step = flySpeed * stepDt
-			local nextPos = root.Position + unit * step
-			root.CFrame = CFrame.lookAt(nextPos, nextPos + flatLook)
-			root.AssemblyLinearVelocity = Vector3.new(
-				unit.X * flySpeed,
-				math.clamp(unit.Y * flySpeed, -flySpeed, flySpeed),
-				unit.Z * flySpeed
-			)
+			flyPosition = flyPosition + unit * flySpeed * stepDt
+			root.AssemblyLinearVelocity = unit * flySpeed
 		else
 			root.AssemblyLinearVelocity = Vector3.zero
 		end
+		-- Movement follows the full camera vector; keep only the avatar's visual
+		-- facing level so looking straight up/down cannot roll the character.
+		local facing = Vector3.new(look.X, 0, look.Z)
+		if facing.Magnitude < 0.001 then
+			facing = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+		end
+		facing = facing.Magnitude > 0.001 and facing.Unit or Vector3.new(0, 0, -1)
+		root.CFrame = CFrame.lookAt(flyPosition, flyPosition + facing)
 		root.AssemblyAngularVelocity = Vector3.zero
 	end)
 	table.insert(connections, flyConn)
@@ -2715,9 +2720,9 @@ local function applyNoClip()
 	end
 end
 
-local function setNoClip(on)
-	noClipOn = on and true or false
-	if not noClipOn then
+refreshNoClip = function()
+	local active = noClipOn or flyCollisionBypass
+	if not active then
 		if noClipConn then
 			pcall(function() noClipConn:Disconnect() end)
 			noClipConn = nil
@@ -2733,6 +2738,11 @@ local function setNoClip(on)
 			if noClipOn then applyNoClip() end
 		end)
 	end
+end
+
+local function setNoClip(on)
+	noClipOn = on and true or false
+	refreshNoClip()
 end
 
 local Api = {}
@@ -2822,7 +2832,7 @@ end
 
 function Api.setFly(on, speed)
 	if typeof(speed) == "number" then
-		flySpeed = math.clamp(speed, 10, 300)
+		flySpeed = math.clamp(speed, 10, 500)
 	end
 	if on then
 		startFly()
