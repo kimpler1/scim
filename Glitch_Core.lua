@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V74
+  VER: V75
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V74"
+local GLITCH_CORE_VER = "V75"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -74,8 +74,11 @@ local espMap = {} -- [key] = { hl, bb, label, kind }
 local espFolder, espConn
 local walkSpeedOn, walkSpeedVal = false, 32
 local flyOn, flySpeed = false, 60
+local infiniteJumpOn, noClipOn = false, false
 local moveConn
 local flyConn = nil
+local infiniteJumpConn, noClipConn
+local noClipOriginal = setmetatable({}, { __mode = "k" })
 local freezeMoveForValidate = false -- pause WS boost / fly travel during guard-hit validate
 local deliverAssistConn = nil
 local deliverAssistBusy = false
@@ -261,7 +264,6 @@ end
 -- MUST be declared before stealMoveTo (Lua local scope)
 local lastEggUid, lastEggPos, lastStealAt = nil, nil, 0
 local rigSyncPatched = false
-local animationHumanoid
 
 local function isActuallyCarrying()
 	local pg = LP:FindFirstChildOfClass("PlayerGui")
@@ -364,28 +366,15 @@ local function patchRigSyncKnockback()
 	return rigSyncPatched
 end
 
-local function restartDefaultAnimations(char, hum)
-	if animationHumanoid == hum then return end
-	animationHumanoid = hum
-	local animate = char and char:FindFirstChild("Animate")
-	if animate and animate:IsA("LocalScript") then
-		-- The old farm used to replace Humanoid. Roblox Animate can retain a
-		-- reference to that deleted Humanoid, which leaves the player gliding.
-		-- Restart it once against the current, original Humanoid instead.
-		pcall(function() animate.Disabled = true end)
-		task.defer(function()
-			if animate.Parent == char then pcall(function() animate.Disabled = false end) end
-		end)
-	end
-end
-
--- Keep the anti-push preparation, but never replace Humanoid. Replacing it
--- breaks the default running animation even after Auto Farm is turned off.
+-- Previous stable anti-push setup. This replacement is required by the
+-- current server's guard/return checks; without it the server repeatedly
+-- returns the player to the finish and can eventually reset the character.
 local function swapStealHumanoid()
 	local char = getChar()
 	if not char then return false end
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if not hum then return false end
+	if hum:GetAttribute("SAE_SafeHum") == true then return true end
 
 	for _, d in ipairs(char:GetDescendants()) do
 		if d:IsA("LocalScript") and string.find(d.Name, "Push", 1, true) then
@@ -396,18 +385,22 @@ local function swapStealHumanoid()
 		end
 	end
 
-	hum.Sit = false
-	hum.PlatformStand = false
-	hum.AutoRotate = true
+	hum.Archivable = true
+	local clone = hum:Clone()
+	if not clone then return false end
+	clone:SetAttribute("SAE_SafeHum", true)
+	clone.Sit = false
+	clone.PlatformStand = false
+	clone.AutoRotate = true
+	hum:Destroy()
+	clone.Parent = char
 	local hrp = char:FindFirstChild("HumanoidRootPart")
 	if hrp then
-		pcall(function() hrp.Anchored = false end)
 		hrp.AssemblyLinearVelocity = Vector3.zero
 		hrp.AssemblyAngularVelocity = Vector3.zero
 	end
-	restartDefaultAnimations(char, hum)
 	pcall(function()
-		hum:ChangeState(Enum.HumanoidStateType.Running)
+		clone:ChangeState(Enum.HumanoidStateType.Running)
 	end)
 	return true
 end
@@ -2657,6 +2650,68 @@ local function startFly()
 	setStatus(("Fly on %d | AC %s | %s"):format(flySpeed, tostring(ac), GLITCH_CORE_VER))
 end
 
+local function setInfiniteJump(on)
+	infiniteJumpOn = on and true or false
+	if not infiniteJumpOn then
+		if infiniteJumpConn then
+			pcall(function() infiniteJumpConn:Disconnect() end)
+			infiniteJumpConn = nil
+		end
+		return
+	end
+	if infiniteJumpConn then return end
+	-- JumpRequest also fires in mid-air, unlike a one-time Space key listener.
+	infiniteJumpConn = UserInputService.JumpRequest:Connect(function()
+		if not infiniteJumpOn then return end
+		local hum = getHum()
+		if hum and hum.Health > 0 and not hum.PlatformStand then
+			pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
+		end
+	end)
+end
+
+local function restoreNoClip()
+	for part, wasCollidable in pairs(noClipOriginal) do
+		pcall(function()
+			if part and part.Parent then part.CanCollide = wasCollidable end
+		end)
+	end
+	table.clear(noClipOriginal)
+end
+
+local function applyNoClip()
+	local char = getChar()
+	if not char then return end
+	for _, part in ipairs(char:GetDescendants()) do
+		if part:IsA("BasePart") then
+			if noClipOriginal[part] == nil then
+				noClipOriginal[part] = part.CanCollide
+			end
+			part.CanCollide = false
+		end
+	end
+end
+
+local function setNoClip(on)
+	noClipOn = on and true or false
+	if not noClipOn then
+		if noClipConn then
+			pcall(function() noClipConn:Disconnect() end)
+			noClipConn = nil
+		end
+		restoreNoClip()
+		return
+	end
+	applyNoClip()
+	if not noClipConn then
+		-- Apply before each physics simulation so new character parts and game
+		-- scripts that restore collision cannot make the player stick in a wall.
+		noClipConn = RunService.Stepped:Connect(function()
+			if noClipOn then applyNoClip() end
+		end)
+	end
+end
+
 local Api = {}
 
 function Api.getVersion()
@@ -2693,21 +2748,8 @@ end
 function Api.stopFarm()
 	autoFarm = false
 	cancelManualDeliverAssist()
-	local root = getHRP()
-	if root then
-		pcall(function() root.Anchored = false end)
-		root.AssemblyLinearVelocity = Vector3.zero
-		root.AssemblyAngularVelocity = Vector3.zero
-	end
 	local hum = getHum()
-	if hum then
-		hum.Sit = false
-		hum.PlatformStand = false
-		hum.AutoRotate = true
-		pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
-		pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
-		restartDefaultAnimations(getChar(), hum)
-	end
+	if hum then hum.PlatformStand = false end
 	setStatus("Auto off")
 end
 
@@ -2765,9 +2807,21 @@ function Api.setFly(on, speed)
 	end
 end
 
+function Api.setInfiniteJump(on)
+	setInfiniteJump(on)
+	setStatus(on and "Infinite Jump on" or "Infinite Jump off")
+end
+
+function Api.setNoClip(on)
+	setNoClip(on)
+	setStatus(on and "No Clip on" or "No Clip off")
+end
+
 function Api.destroy()
 	autoFarm = false
 	stopFly()
+	setInfiniteJump(false)
+	setNoClip(false)
 	walkSpeedOn = false
 	cancelManualDeliverAssist()
 	espFlags.players, espFlags.eggs, espFlags.beasts = false, false, false
@@ -2777,6 +2831,7 @@ function Api.destroy()
 	end
 	connections = {}
 	espConn, moveConn, flyConn, deliverAssistConn = nil, nil, nil, nil
+	infiniteJumpConn, noClipConn = nil, nil
 end
 
 LP.CharacterAdded:Connect(function()
