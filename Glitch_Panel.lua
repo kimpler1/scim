@@ -4,8 +4,8 @@
   VER: V78
 ]]
 
-local GLITCH_UI_VER = "V78"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v78"
+local GLITCH_UI_VER = "V79"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v79"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -656,7 +656,7 @@ nextB.BorderSizePixel = 0
 nextB.Parent = zoneRow
 corner(nextB, 8)
 
-local allEggsToggle, bestEggToggle, droppedEggsToggle
+local allEggsToggle, bestEggToggle, droppedEggsToggle, carrierToggle
 allEggsToggle = makeToggle(mainPage, "Steal All Eggs", false, function(on)
 	if not loadCore() then
 		allEggsToggle.set(false)
@@ -666,6 +666,7 @@ allEggsToggle = makeToggle(mainPage, "Steal All Eggs", false, function(on)
 		targetMode = "all"
 		if bestEggToggle then bestEggToggle.set(false) end
 		if droppedEggsToggle then droppedEggsToggle.set(false) end
+		if carrierToggle then carrierToggle.set(false) end
 	end
 	pushConfig()
 	autoOn = on
@@ -686,6 +687,7 @@ bestEggToggle = makeToggle(mainPage, "Steal Best Egg", false, function(on)
 		targetMode = "best"
 		if allEggsToggle then allEggsToggle.set(false) end
 		if droppedEggsToggle then droppedEggsToggle.set(false) end
+		if carrierToggle then carrierToggle.set(false) end
 	end
 	pushConfig()
 	autoOn = on
@@ -706,6 +708,7 @@ droppedEggsToggle = makeToggle(mainPage, "Recover Dropped Eggs", false, function
 		targetMode = "dropped"
 		if allEggsToggle then allEggsToggle.set(false) end
 		if bestEggToggle then bestEggToggle.set(false) end
+		if carrierToggle then carrierToggle.set(false) end
 	end
 	pushConfig()
 	autoOn = on
@@ -714,6 +717,27 @@ droppedEggsToggle = makeToggle(mainPage, "Recover Dropped Eggs", false, function
 	elseif targetMode == "dropped" then
 		coreApi.stopFarm()
 		setStatus("Auto off")
+	end
+end)
+
+carrierToggle = makeToggle(mainPage, "Bat Aura · Track Egg Carriers", false, function(on)
+	if not loadCore() then
+		carrierToggle.set(false)
+		return
+	end
+	if on then
+		targetMode = "carrier"
+		if allEggsToggle then allEggsToggle.set(false) end
+		if bestEggToggle then bestEggToggle.set(false) end
+		if droppedEggsToggle then droppedEggsToggle.set(false) end
+	end
+	pushConfig()
+	autoOn = on
+	if on then
+		coreApi.startFarm()
+	elseif targetMode == "carrier" then
+		coreApi.stopFarm()
+		setStatus("Bat aura off")
 	end
 end)
 

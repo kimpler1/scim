@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V78
+  VER: V79
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V78"
+local GLITCH_CORE_VER = "V79"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -55,6 +55,7 @@ local CFG = {
 	retryRecoveryWait = 4.0,
 	retryAttempts = 3,
 	targetMode = "all",
+	carrierFollowDistance = 3.5,
 	status = function() end,
 }
 
@@ -506,8 +507,8 @@ local function stealMoveTo(targetX, targetZ, speed, opts)
 		humanoid.Sit = false
 		humanoid.PlatformStand = false
 	end
-	local arriveDistance = CFG.arriveDist
-	local deadline = tick() + CFG.moveTimeout
+	local arriveDistance = opts.arriveDist or CFG.arriveDist
+	local deadline = tick() + (opts.timeout or CFG.moveTimeout)
 	local spd = speed or CFG.approachSpeed
 	local elev = opts.elevated and (CFG.escapeHeight or 5) or 0
 
@@ -1826,21 +1827,35 @@ local function interceptCarrierOnce()
 	-- Probe V63 confirmed RE/BatSwing/Trigger requires a rotating signed token.
 	-- Tool:Activate generates that token; a blank direct remote call is ignored.
 	if not stealAlong(buildStealPath(me.Position, root.Position), CFG.approachSpeed) then return false end
-	for _ = 1, 46 do
+	-- Stay just behind the carrier rather than chasing the position they occupied
+	-- a frame ago.  Velocity is preferred while they run; look direction keeps the
+	-- position stable when they stop briefly at their finish.
+	for _ = 1, 110 do
 		root = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
 		if not root or not playerIsCarryingEgg(target) then break end
 		me = getHRP()
-		if me and (root.Position - me.Position).Magnitude > 7 then
-			stealMoveTo(root.Position.X, root.Position.Z, CFG.approachSpeed)
+		if me then
+			local velocity = root.AssemblyLinearVelocity
+			local planarVelocity = Vector3.new(velocity.X, 0, velocity.Z)
+			local heading = planarVelocity.Magnitude > 2
+				and planarVelocity.Unit
+				or Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+			if heading.Magnitude < 0.01 then heading = Vector3.new(0, 0, -1) end
+			local followPos = root.Position - heading.Unit * CFG.carrierFollowDistance
+			if (followPos - me.Position).Magnitude > 1.15 then
+				stealMoveTo(followPos.X, followPos.Z, CFG.approachSpeed, { arriveDist = 0.8, timeout = 0.45 })
+			end
 		end
 		me = getHRP()
 		if me and (root.Position - me.Position).Magnitude <= 20 then
 			setStatus("Bat aura · " .. target.DisplayName)
 			pcall(function() bat:Activate() end)
 		end
-		task.wait(0.08)
+		task.wait(0.06)
 	end
-	local dropPos = root and root.Position or getHRP().Position
+	local finalRoot = getHRP()
+	local dropPos = root and root.Position or (finalRoot and finalRoot.Position)
+	if not dropPos then return false end
 	local untilT, dropped = tick() + 3.0, nil
 	while tick() < untilT and autoFarm do
 		dropped = findDroppedNear(dropPos, 70)
@@ -1884,6 +1899,11 @@ local function farmOnce()
 		end
 		if isInPlot() then plantCarriedEggs() end
 		carrying = false
+		return
+	end
+
+	if CFG.targetMode == "carrier" then
+		interceptCarrierOnce()
 		return
 	end
 
@@ -2749,7 +2769,8 @@ function Api.setConfig(t)
 	if t.biomes then CFG.biomes = t.biomes end
 	if t.approachSpeed then CFG.approachSpeed = math.clamp(t.approachSpeed, 50, 1000) end
 	if t.escapeSpeed then CFG.escapeSpeed = math.clamp(t.escapeSpeed, 50, 1000) end
-	if t.targetMode == "all" or t.targetMode == "best" or t.targetMode == "dropped" then CFG.targetMode = t.targetMode end
+	if t.targetMode == "all" or t.targetMode == "best" or t.targetMode == "dropped" or t.targetMode == "carrier" then CFG.targetMode = t.targetMode end
+	if t.carrierFollowDistance then CFG.carrierFollowDistance = math.clamp(t.carrierFollowDistance, 2, 8) end
 	if typeof(t.status) == "function" then CFG.status = t.status end
 end
 
