@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V81
+  VER: V82
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V81"
+local GLITCH_CORE_VER = "V82"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -679,6 +679,17 @@ local function recordBelongsToPlayer(record, plr)
 	return false
 end
 
+-- A player reference may remain in a snapshot after delivery.  It is a valid
+-- aura target only while the record explicitly says the egg is being carried.
+local function recordIsActivelyCarried(record)
+	if typeof(record) ~= "table" then return false end
+	if record.IsCarrying == true or record.IsHeld == true then return true end
+	local state = tostring(record.State or record.Status or ""):lower()
+	return state:find("carry", 1, true) ~= nil
+		or state:find("held", 1, true) ~= nil
+
+end
+
 local carrierWorldCache, carrierWorldCacheAt = {}, 0
 local function visibleWorldCarriers()
 	if tick() - carrierWorldCacheAt < 0.45 then return carrierWorldCache end
@@ -712,10 +723,10 @@ end
 
 local function playerIsCarryingEgg(plr, records, worldCarriers)
 	if not plr or plr == LP then return false end
-	if plr:GetAttribute("IsCarryingEgg") == true or hasEggSignal(plr) then return true end
+	if plr:GetAttribute("IsCarryingEgg") == true then return true end
 	local char = plr.Character
 	if not char then return false end
-	if char:GetAttribute("IsCarryingEgg") == true or hasEggSignal(char) then return true end
+	if char:GetAttribute("IsCarryingEgg") == true then return true end
 	-- A normal non-combat Tool is not evidence of an egg: bases and finish
 	-- areas contain several of them, which previously produced false targets.
 	for _, item in ipairs(char:GetDescendants()) do
@@ -727,10 +738,11 @@ local function playerIsCarryingEgg(plr, records, worldCarriers)
 	end
 	if records then
 		for _, record in pairs(records) do
-			if recordBelongsToPlayer(record, plr) then return true end
+			if recordIsActivelyCarried(record) and recordBelongsToPlayer(record, plr) then return true end
 		end
 	end
-	if (worldCarriers or visibleWorldCarriers())[plr] then return true end
+	-- Do not infer carry state from an egg-shaped object nearby: finish/base
+	-- decorations can be within that radius and create a false target.
 	return false
 end
 
@@ -1784,7 +1796,7 @@ local function carriedEggUid(plr, records)
 		end
 	end
 	for uid, record in pairs(records or {}) do
-		if recordBelongsToPlayer(record, plr) then return uid end
+		if recordIsActivelyCarried(record) and recordBelongsToPlayer(record, plr) then return uid end
 	end
 	return nil
 end
@@ -1793,12 +1805,11 @@ local function nearestEggCarrier()
 	local hrp = getHRP()
 	if not hrp then return nil end
 	local records = recordsByUid()
-	local worldCarriers = visibleWorldCarriers()
 	local best, bestDist, bestValue, bestRarity, bestUid
 	for _, plr in ipairs(Players:GetPlayers()) do
 		local char = plr.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart")
-		if root and isInsideAnyEggField(root.Position) and playerIsCarryingEgg(plr, records, worldCarriers) then
+		if root and isInsideAnyEggField(root.Position) and playerIsCarryingEgg(plr, records) then
 			local dist = (root.Position - hrp.Position).Magnitude
 			local value, rarity = carriedEggValue(plr, records)
 			if not bestValue or value > bestValue or (value == bestValue and dist < bestDist) then
@@ -1856,15 +1867,14 @@ local function interceptCarrierOnce()
 	local me = getHRP()
 	if not (root and me) then return false end
 	setStatus("Track " .. target.DisplayName .. " · " .. tostring(rarity))
-	-- Probe V63 confirmed RE/BatSwing/Trigger requires a rotating signed token.
-	-- Tool:Activate generates that token; a blank direct remote call is ignored.
-	if not stealAlong(buildStealPath(me.Position, root.Position), CFG.approachSpeed) then return false end
 	-- Stay just behind the carrier rather than chasing the position they occupied
 	-- a frame ago.  Velocity is preferred while they run; look direction keeps the
-	-- position stable when they stop briefly at their finish.
-	for _ = 1, 110 do
+	-- position stable when they stop briefly.  There is deliberately no initial
+	-- waypoint path: every move is immediately re-aimed at the live target.
+	for _ = 1, 200 do
 		root = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
-		if not root or not playerIsCarryingEgg(target) then break end
+		local liveRecords = recordsByUid()
+		if not root or not playerIsCarryingEgg(target, liveRecords) then break end
 		me = getHRP()
 		if me then
 			local velocity = root.AssemblyLinearVelocity
