@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V86
+  VER: V87
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V86"
+local GLITCH_CORE_VER = "V87"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -1973,6 +1973,7 @@ local function interceptCarrierOnce()
 	-- position stable when they stop briefly.  There is deliberately no initial
 	-- waypoint path: every move is immediately re-aimed at the live target.
 	local carrierLost = false
+	local dropped, swingAt = nil, nil
 	for _ = 1, 600 do
 		if not autoFarm then
 			local stoppedHum = getHum()
@@ -1997,7 +1998,7 @@ local function interceptCarrierOnce()
 				or Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
 			if heading.Magnitude < 0.01 then heading = Vector3.new(0, 0, -1) end
 			local followPos = root.Position - heading.Unit * CFG.carrierFollowDistance
-			chaseCarrierStep(followPos, CFG.approachSpeed)
+			chaseCarrierStep(followPos, CFG.escapeSpeed)
 		else
 			RunService.Heartbeat:Wait()
 		end
@@ -2005,21 +2006,29 @@ local function interceptCarrierOnce()
 		if me and (root.Position - me.Position).Magnitude <= 20 then
 			setStatus("Bat aura · " .. target.DisplayName)
 			pcall(function() bat:Activate() end)
+			swingAt = swingAt or tick()
+		end
+		-- Do not wait for the temporary carrier event to expire.  Once a swing
+		-- has had time to land, Recovery can see the spawned drop immediately.
+		if swingAt and tick() - swingAt >= 0.22 then
+			dropped = carriedUid and findDroppedNear(root.Position, 45, carriedUid) or nil
+			if not dropped then dropped = findDroppedNear(root.Position, 30) end
+			if dropped then break end
 		end
 	end
-	if not carrierLost then return false end
+	if not dropped and not carrierLost then return false end
 	local finalRoot = getHRP()
 	local dropPos = root and root.Position or (finalRoot and finalRoot.Position)
 	if not dropPos then return false end
-	local untilT, dropped = tick() + 3.0, nil
-	while tick() < untilT and autoFarm do
+	local untilT = tick() + 3.0
+	while not dropped and tick() < untilT and autoFarm do
 		-- Never fall back to a generic field/reclaim search in carrier mode.
 		-- If the carrier's UID is not visible, doing nothing is safer than
 		-- stealing a different egg.
-		dropped = carriedUid and findDroppedNear(dropPos, 24, carriedUid) or nil
+		dropped = carriedUid and findDroppedNear(dropPos, 45, carriedUid) or nil
 		-- Recovery's visible-drop scan is the fallback only after the tracked
 		-- carrier has actually lost the egg, and only at that carrier's last spot.
-		if not dropped then dropped = findDroppedNear(dropPos, 18) end
+		if not dropped then dropped = findDroppedNear(dropPos, 30) end
 		if dropped then break end
 		task.wait(0.1)
 	end
