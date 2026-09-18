@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V82
+  VER: V83
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V82"
+local GLITCH_CORE_VER = "V83"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -691,6 +691,16 @@ local function recordIsActivelyCarried(record)
 end
 
 local carrierWorldCache, carrierWorldCacheAt = {}, 0
+local function isConnectedToCharacter(part, char)
+	if not (part and char) then return false end
+	local ok, connected = pcall(function() return part:GetConnectedParts(true) end)
+	if not ok then return false end
+	for _, linked in ipairs(connected) do
+		if linked:IsDescendantOf(char) then return true end
+	end
+	return false
+end
+
 local function visibleWorldCarriers()
 	if tick() - carrierWorldCacheAt < 0.45 then return carrierWorldCache end
 	carrierWorldCacheAt = tick()
@@ -703,13 +713,15 @@ local function visibleWorldCarriers()
 		end
 	end
 	for _, obj in ipairs(Workspace:GetDescendants()) do
-		-- Models are checked once; their child parts would otherwise duplicate
-		-- every candidate and make this scan unnecessarily expensive.
-		if (obj:IsA("Model") or obj:IsA("BasePart")) and hasEggSignal(obj) then
-			local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart", true)
+		-- A carried egg can be a workspace Model welded to the character rather
+		-- than a child named "Egg".  Accept only a physical connection to that
+		-- character; proximity alone previously selected finish decorations.
+		if obj:IsA("Model") then
+			local part = obj:FindFirstChildWhichIsA("BasePart", true)
 			if part then
 				for _, candidate in ipairs(roots) do
-					if (part.Position - candidate.root.Position).Magnitude <= 11 then
+					if not obj:IsDescendantOf(candidate.player.Character)
+						and isConnectedToCharacter(part, candidate.player.Character) then
 						found[candidate.player] = obj
 						break
 					end
@@ -741,8 +753,9 @@ local function playerIsCarryingEgg(plr, records, worldCarriers)
 			if recordIsActivelyCarried(record) and recordBelongsToPlayer(record, plr) then return true end
 		end
 	end
-	-- Do not infer carry state from an egg-shaped object nearby: finish/base
-	-- decorations can be within that radius and create a false target.
+	-- This visual fallback is safe only because visibleWorldCarriers requires
+	-- a physical joint connection to the character, not nearby geometry.
+	if (worldCarriers or visibleWorldCarriers())[plr] then return true end
 	return false
 end
 
@@ -812,6 +825,19 @@ local function nearBiomeCenter(pos, biome)
 	local rx = CFG.biomeRadiusX or 220
 	local rz = CFG.biomeRadiusZ or 140
 	return math.abs(pos.X - center.X) <= rx and math.abs(pos.Z - center.Z) <= rz
+end
+
+-- Initial discovery happens where the live field slots are.  This keeps aura
+-- off plots/finish areas even if an old carrier record is still present.
+local function isNearLiveFieldEgg(position)
+	if not position then return false end
+	AreaEggs = ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 0)
+	if not AreaEggs then return false end
+	for _, egg in ipairs(AreaEggs:GetChildren()) do
+		local pos = eggPos(egg)
+		if pos and (pos - position).Magnitude <= 165 then return true end
+	end
+	return false
 end
 
 local function isInsideBiomeBounds(pos, biome)
@@ -1805,11 +1831,13 @@ local function nearestEggCarrier()
 	local hrp = getHRP()
 	if not hrp then return nil end
 	local records = recordsByUid()
+	local worldCarriers = visibleWorldCarriers()
 	local best, bestDist, bestValue, bestRarity, bestUid
 	for _, plr in ipairs(Players:GetPlayers()) do
 		local char = plr.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart")
-		if root and isInsideAnyEggField(root.Position) and playerIsCarryingEgg(plr, records) then
+		if root and isInsideAnyEggField(root.Position) and isNearLiveFieldEgg(root.Position)
+			and playerIsCarryingEgg(plr, records, worldCarriers) then
 			local dist = (root.Position - hrp.Position).Magnitude
 			local value, rarity = carriedEggValue(plr, records)
 			if not bestValue or value > bestValue or (value == bestValue and dist < bestDist) then
@@ -1874,7 +1902,8 @@ local function interceptCarrierOnce()
 	for _ = 1, 200 do
 		root = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
 		local liveRecords = recordsByUid()
-		if not root or not playerIsCarryingEgg(target, liveRecords) then break end
+		local liveWorldCarriers = visibleWorldCarriers()
+		if not root or not playerIsCarryingEgg(target, liveRecords, liveWorldCarriers) then break end
 		me = getHRP()
 		if me then
 			local velocity = root.AssemblyLinearVelocity
