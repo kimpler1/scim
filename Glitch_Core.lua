@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V83
+  VER: V84
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V83"
+local GLITCH_CORE_VER = "V84"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -835,7 +835,9 @@ local function isNearLiveFieldEgg(position)
 	if not AreaEggs then return false end
 	for _, egg in ipairs(AreaEggs:GetChildren()) do
 		local pos = eggPos(egg)
-		if pos and (pos - position).Magnitude <= 165 then return true end
+		-- A carrier must be discovered at the actual egg cluster.  A wide radius
+		-- reaches the finish lane on this map and produces false Bat Aura targets.
+		if pos and (pos - position).Magnitude <= 65 then return true end
 	end
 	return false
 end
