@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V75
+  VER: V76
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V75"
+local GLITCH_CORE_VER = "V76"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -403,6 +403,29 @@ local function swapStealHumanoid()
 		clone:ChangeState(Enum.HumanoidStateType.Running)
 	end)
 	return true
+end
+
+-- Auto Farm intentionally uses a replacement Humanoid for the guard route.
+-- When it stops, restart Roblox's Animate script against that replacement so
+-- manual walking returns to a real running animation instead of gliding.
+local function restoreManualRunAnimation()
+	local char = getChar()
+	local hum = getHum()
+	if not (char and hum) then return end
+	hum.Sit = false
+	hum.PlatformStand = false
+	hum.AutoRotate = true
+	pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+	pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+	local animate = char:FindFirstChild("Animate")
+	if animate and animate:IsA("LocalScript") then
+		pcall(function() animate.Disabled = true end)
+		task.defer(function()
+			if animate.Parent == char then
+				pcall(function() animate.Disabled = false end)
+			end
+		end)
+	end
 end
 
 local function getLaneZ()
@@ -2750,6 +2773,7 @@ function Api.stopFarm()
 	cancelManualDeliverAssist()
 	local hum = getHum()
 	if hum then hum.PlatformStand = false end
+	restoreManualRunAnimation()
 	setStatus("Auto off")
 end
 
