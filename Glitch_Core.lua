@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V80
+  VER: V81
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V80"
+local GLITCH_CORE_VER = "V81"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -1694,7 +1694,7 @@ local function ensureDeliverAssist()
 	table.insert(connections, deliverAssistConn)
 end
 
-local function peelThenEscape(reclaimDepth)
+local function peelThenEscape(reclaimDepth, strictUid)
 	local hrp = getHRP()
 	if not hrp then return false end
 	setStatus("Peel")
@@ -1709,12 +1709,12 @@ local function peelThenEscape(reclaimDepth)
 	if not peelOk and not isActuallyCarrying() then
 		carrying = false
 		setStatus("Egg lost")
-		if (reclaimDepth or 0) < 1 then
+		if not strictUid and (reclaimDepth or 0) < 1 then
 			local dropped = findReclaimEgg()
 			if dropped then
 				setStatus("Drop -> reclaim")
 				if approachAndSteal(dropped, CFG.approachSpeed) then
-					return peelThenEscape((reclaimDepth or 0) + 1)
+					return peelThenEscape((reclaimDepth or 0) + 1, strictUid)
 				end
 			end
 		end
@@ -1726,12 +1726,12 @@ local function peelThenEscape(reclaimDepth)
 	if not escaped and not isActuallyCarrying() then
 		carrying = false
 		setStatus("Egg lost")
-		if (reclaimDepth or 0) < 1 then
+		if not strictUid and (reclaimDepth or 0) < 1 then
 			local dropped = findReclaimEgg()
 			if dropped then
 				setStatus("Drop -> reclaim")
 				if approachAndSteal(dropped, CFG.approachSpeed) then
-					return peelThenEscape((reclaimDepth or 0) + 1)
+					return peelThenEscape((reclaimDepth or 0) + 1, strictUid)
 				end
 			end
 		end
@@ -1771,12 +1771,30 @@ local function carriedEggValue(plr, records)
 	return 0, "Common"
 end
 
+-- The UID is the identity check that prevents an aura hit from turning into a
+-- pickup of a different field egg near the target.
+local function carriedEggUid(plr, records)
+	local char = plr and plr.Character
+	if char then
+		for _, item in ipairs(char:GetChildren()) do
+			if item:IsA("Tool") or item:IsA("Model") then
+				local uid = item:GetAttribute("Uid") or item:GetAttribute("EggUid")
+				if typeof(uid) == "string" then return uid end
+			end
+		end
+	end
+	for uid, record in pairs(records or {}) do
+		if recordBelongsToPlayer(record, plr) then return uid end
+	end
+	return nil
+end
+
 local function nearestEggCarrier()
 	local hrp = getHRP()
 	if not hrp then return nil end
 	local records = recordsByUid()
 	local worldCarriers = visibleWorldCarriers()
-	local best, bestDist, bestValue, bestRarity
+	local best, bestDist, bestValue, bestRarity, bestUid
 	for _, plr in ipairs(Players:GetPlayers()) do
 		local char = plr.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -1785,10 +1803,11 @@ local function nearestEggCarrier()
 			local value, rarity = carriedEggValue(plr, records)
 			if not bestValue or value > bestValue or (value == bestValue and dist < bestDist) then
 				best, bestDist, bestValue, bestRarity = plr, dist, value, rarity
+				bestUid = carriedEggUid(plr, records)
 			end
 		end
 	end
-	return best, bestRarity
+	return best, bestRarity, bestUid
 end
 
 local function findBatTool()
@@ -1804,8 +1823,15 @@ local function findBatTool()
 	return scan(getChar()) or scan(LP:FindFirstChild("Backpack"))
 end
 
-local function findDroppedNear(position, radius)
+local function findDroppedNear(position, radius, expectedUid)
 	local recs = recordsByUid()
+	if expectedUid then
+		local record = recs[expectedUid]
+		local visible = visibleDroppedCandidates(recs)
+		local candidate = record and record.State == "Dropped" and visible[expectedUid]
+		if candidate and (candidate.Position - position).Magnitude <= radius then return candidate end
+		return nil
+	end
 	local visible, anonymous = visibleDroppedCandidates(recs)
 	local best, bestDist
 	local function consider(candidate)
@@ -1820,7 +1846,7 @@ local function findDroppedNear(position, radius)
 end
 
 local function interceptCarrierOnce()
-	local target, rarity = nearestEggCarrier()
+	local target, rarity, carriedUid = nearestEggCarrier()
 	if not target then setStatus("No egg carrier"); task.wait(0.6); return false end
 	local bat = findBatTool()
 	if not bat then setStatus("Bat not equipped"); task.wait(0.8); return false end
@@ -1864,15 +1890,17 @@ local function interceptCarrierOnce()
 	if not dropPos then return false end
 	local untilT, dropped = tick() + 3.0, nil
 	while tick() < untilT and autoFarm do
-		dropped = findDroppedNear(dropPos, 70)
-		if not dropped then dropped = findReclaimEgg() end
+		-- Never fall back to a generic field/reclaim search in carrier mode.
+		-- If the carrier's UID is not visible, doing nothing is safer than
+		-- stealing a different egg.
+		dropped = carriedUid and findDroppedNear(dropPos, 24, carriedUid) or nil
 		if dropped then break end
 		task.wait(0.1)
 	end
 	if not dropped then setStatus("Carrier drop not found"); return false end
 	setStatus("Take carrier drop")
 	if not approachAndSteal(dropped, CFG.approachSpeed) then return false end
-	return peelThenEscape()
+	return peelThenEscape(0, carriedUid)
 end
 
 local function resetFarmAttempt()
