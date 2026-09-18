@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V84
+  VER: V85
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V84"
+local GLITCH_CORE_VER = "V85"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -627,6 +627,33 @@ local function biomeAliases(name)
 		return { "Angels", "Demons", "Angel", "Demon", "Light", "Darkness", "Light vs Darkness" }
 	end
 	return { name }
+end
+
+-- One continuous pursuit step for Bat Aura.  Unlike stealMoveTo this never
+-- waits to reach a waypoint, so the target position is refreshed every frame.
+local function chaseCarrierStep(targetPosition, speed)
+	local root = getHRP()
+	if not root or not targetPosition or not isFiniteVec(root.Position) then return false end
+	local hum = getHum()
+	if hum then
+		hum.Sit = false
+		hum.PlatformStand = false
+	end
+	local dt = RunService.Heartbeat:Wait()
+	if typeof(dt) ~= "number" or dt <= 0 then dt = 1 / 60 end
+	root = getHRP()
+	if not root then return false end
+	local y = groundedY(targetPosition.X, targetPosition.Z, root.Position.Y)
+	local destination = Vector3.new(targetPosition.X, y, targetPosition.Z)
+	local delta = destination - root.Position
+	if not isFiniteVec(delta) then return false end
+	local distance = delta.Magnitude
+	if distance <= 0.7 then return true end
+	local nextPosition = root.Position + delta.Unit * math.min(distance, (speed or CFG.approachSpeed) * dt)
+	nextPosition = Vector3.new(nextPosition.X, groundedY(nextPosition.X, nextPosition.Z, nextPosition.Y), nextPosition.Z)
+	local horizontal = Vector3.new(delta.X, 0, delta.Z)
+	anchor(root, horizontal.Magnitude > 0.05 and CFrame.lookAt(nextPosition, nextPosition + horizontal) or CFrame.new(nextPosition))
+	return true
 end
 
 local function matchesBiome(areaId, biome)
@@ -1901,11 +1928,15 @@ local function interceptCarrierOnce()
 	-- a frame ago.  Velocity is preferred while they run; look direction keeps the
 	-- position stable when they stop briefly.  There is deliberately no initial
 	-- waypoint path: every move is immediately re-aimed at the live target.
-	for _ = 1, 200 do
+	local carrierLost = false
+	for _ = 1, 600 do
 		root = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
 		local liveRecords = recordsByUid()
 		local liveWorldCarriers = visibleWorldCarriers()
-		if not root or not playerIsCarryingEgg(target, liveRecords, liveWorldCarriers) then break end
+		if not root or not playerIsCarryingEgg(target, liveRecords, liveWorldCarriers) then
+			carrierLost = true
+			break
+		end
 		me = getHRP()
 		if me then
 			local velocity = root.AssemblyLinearVelocity
@@ -1915,17 +1946,17 @@ local function interceptCarrierOnce()
 				or Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
 			if heading.Magnitude < 0.01 then heading = Vector3.new(0, 0, -1) end
 			local followPos = root.Position - heading.Unit * CFG.carrierFollowDistance
-			if (followPos - me.Position).Magnitude > 1.15 then
-				stealMoveTo(followPos.X, followPos.Z, CFG.approachSpeed, { arriveDist = 0.8, timeout = 0.45 })
-			end
+			chaseCarrierStep(followPos, CFG.approachSpeed)
+		else
+			RunService.Heartbeat:Wait()
 		end
 		me = getHRP()
 		if me and (root.Position - me.Position).Magnitude <= 20 then
 			setStatus("Bat aura · " .. target.DisplayName)
 			pcall(function() bat:Activate() end)
 		end
-		task.wait(0.06)
 	end
+	if not carrierLost then return false end
 	local finalRoot = getHRP()
 	local dropPos = root and root.Position or (finalRoot and finalRoot.Position)
 	if not dropPos then return false end
@@ -1935,13 +1966,18 @@ local function interceptCarrierOnce()
 		-- If the carrier's UID is not visible, doing nothing is safer than
 		-- stealing a different egg.
 		dropped = carriedUid and findDroppedNear(dropPos, 24, carriedUid) or nil
+		-- Recovery's visible-drop scan is the fallback only after the tracked
+		-- carrier has actually lost the egg, and only at that carrier's last spot.
+		if not dropped then dropped = findDroppedNear(dropPos, 18) end
 		if dropped then break end
 		task.wait(0.1)
 	end
 	if not dropped then setStatus("Carrier drop not found"); return false end
 	setStatus("Take carrier drop")
 	if not approachAndSteal(dropped, CFG.approachSpeed) then return false end
-	return peelThenEscape(0, carriedUid)
+	-- Carrier mode must not switch to the generic reclaim path after its own
+	-- verified drop has been picked up.
+	return peelThenEscape(0, carriedUid or true)
 end
 
 local function resetFarmAttempt()

@@ -4,8 +4,8 @@
   VER: V78
 ]]
 
-local GLITCH_UI_VER = "V84"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v84"
+local GLITCH_UI_VER = "V85"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v85"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
