@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V88
+  VER: V89
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V88"
+local GLITCH_CORE_VER = "V89"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -639,30 +639,31 @@ local function stopAuraFollowMotion()
 	if hum then hum.PlatformStand = false end
 end
 
--- One continuous, physics-driven pursuit step for Bat Aura.  This uses the
--- same BodyVelocity method as Fly instead of teleporting with CFrame.
+-- One continuous pursuit step for Bat Aura.  Follow the live target offset
+-- directly, rather than applying a force that collides with lane walls.
 local function chaseCarrierStep(targetPosition, speed)
 	local root = getHRP()
 	if not root or not targetPosition or not isFiniteVec(root.Position) then return false end
 	local hum = getHum()
 	if not hum then return false end
 	hum.Sit = false
+	root.Anchored = false
+	hum.PlatformStand = false
 	local destination = Vector3.new(targetPosition.X, targetPosition.Y, targetPosition.Z)
 	local delta = destination - root.Position
 	if not isFiniteVec(delta) then return false end
-	local distance = delta.Magnitude
-	if not auraVelocity or auraVelocity.Parent ~= root then
-		stopAuraFollowMotion()
-		auraVelocity = Instance.new("BodyVelocity")
-		auraVelocity.Name = "GlitchAuraVelocity"
-		auraVelocity.MaxForce = Vector3.new(90000, 90000, 90000)
-		auraVelocity.P = 30000
-		auraVelocity.Parent = root
-	end
-	root.Anchored = false
-	hum.PlatformStand = true
-	auraVelocity.Velocity = distance > 1.1 and delta.Unit * (speed or CFG.escapeSpeed) or Vector3.zero
-	RunService.Heartbeat:Wait()
+	local horizontal = Vector3.new(delta.X, 0, delta.Z)
+	local desired = horizontal.Magnitude > 0.05
+		and CFrame.lookAt(destination, destination + horizontal)
+		or CFrame.new(destination)
+	-- A high, frame-rate independent response closes a long gap quickly, then
+	-- settles at the 3.5-stud trailing offset without the physics bounce.
+	local dt = RunService.RenderStepped:Wait()
+	if typeof(dt) ~= "number" or dt <= 0 then dt = 1 / 60 end
+	local alpha = math.clamp(1 - math.exp(-24 * dt), 0.18, 0.72)
+	root.CFrame = root.CFrame:Lerp(desired, alpha)
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
 	return true
 end
 
