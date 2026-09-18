@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V77
+  VER: V78
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V77"
+local GLITCH_CORE_VER = "V78"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -74,9 +74,9 @@ local espMap = {} -- [key] = { hl, bb, label, kind }
 local espFolder, espConn
 local walkSpeedOn, walkSpeedVal = false, 32
 local flyOn, flySpeed = false, 60
-local infiniteJumpOn, noClipOn, flyCollisionBypass = false, false, false
+local infiniteJumpOn, noClipOn = false, false
 local moveConn
-local flyConn = nil
+local flyConn, flyVelocity = nil, nil
 local infiniteJumpConn, noClipConn
 local noClipOriginal = setmetatable({}, { __mode = "k" })
 local refreshNoClip
@@ -2572,15 +2572,17 @@ local function setWalkSpeedEnabled(on)
 	end
 end
 
--- Fly stays unanchored, uses the camera's full 3D direction, and temporarily
--- shares No Clip's collision bypass so the floor cannot pull it underground.
+-- Physical fly: preserve normal collision with floors/walls and drive only a
+-- BodyVelocity. This avoids CFrame movement/no-clip, which the server rejects.
 local function stopFly()
 	flyOn = false
-	flyCollisionBypass = false
-	if refreshNoClip then refreshNoClip() end
 	if flyConn then
 		pcall(function() flyConn:Disconnect() end)
 		flyConn = nil
+	end
+	if flyVelocity then
+		pcall(function() flyVelocity:Destroy() end)
+		flyVelocity = nil
 	end
 	local hrp = getHRP()
 	if hrp then
@@ -2615,19 +2617,23 @@ local function startFly()
 	local ac = installClientAc()
 	hardenCharacterSignals()
 	flyOn = true
-	flyCollisionBypass = true
-	if refreshNoClip then refreshNoClip() end
-	-- Must stay unanchored so server replication + egg remotes see real position
+	-- No Clip is deliberately NOT enabled here: flight must still collide with
+	-- the map instead of passing through floors and walls.
 	hrp.Anchored = false
 	hum.PlatformStand = true
-	local flyPosition = hrp.Position
+	flyVelocity = Instance.new("BodyVelocity")
+	flyVelocity.Name = "GlitchFlyVelocity"
+	flyVelocity.MaxForce = Vector3.new(90000, 90000, 90000)
+	flyVelocity.P = 30000
+	flyVelocity.Velocity = Vector3.zero
+	flyVelocity.Parent = hrp
 
-	flyConn = RunService.Heartbeat:Connect(function(dt)
+	flyConn = RunService.Heartbeat:Connect(function()
 		if not flyOn or autoFarm then return end
 		local root = getHRP()
 		local humanoid = getHum()
 		local cam = Workspace.CurrentCamera
-		if not (root and humanoid and cam) then return end
+		if not (root and humanoid and cam and flyVelocity and flyVelocity.Parent == root) then return end
 
 		if root.Anchored then
 			root.Anchored = false
@@ -2635,9 +2641,7 @@ local function startFly()
 		humanoid.PlatformStand = true
 
 		if freezeMoveForValidate then
-			flyPosition = root.Position
-			root.AssemblyLinearVelocity = Vector3.zero
-			root.AssemblyAngularVelocity = Vector3.zero
+			flyVelocity.Velocity = Vector3.zero
 			return
 		end
 
@@ -2655,23 +2659,11 @@ local function startFly()
 			dir = dir - Vector3.new(0, 1, 0)
 		end
 
-		local stepDt = math.min(dt, 0.1)
 		if dir.Magnitude > 0.05 then
-			local unit = dir.Unit
-			flyPosition = flyPosition + unit * flySpeed * stepDt
-			root.AssemblyLinearVelocity = unit * flySpeed
+			flyVelocity.Velocity = dir.Unit * flySpeed
 		else
-			root.AssemblyLinearVelocity = Vector3.zero
+			flyVelocity.Velocity = Vector3.zero
 		end
-		-- Movement follows the full camera vector; keep only the avatar's visual
-		-- facing level so looking straight up/down cannot roll the character.
-		local facing = Vector3.new(look.X, 0, look.Z)
-		if facing.Magnitude < 0.001 then
-			facing = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
-		end
-		facing = facing.Magnitude > 0.001 and facing.Unit or Vector3.new(0, 0, -1)
-		root.CFrame = CFrame.lookAt(flyPosition, flyPosition + facing)
-		root.AssemblyAngularVelocity = Vector3.zero
 	end)
 	table.insert(connections, flyConn)
 	ensureDeliverAssist()
@@ -2721,7 +2713,7 @@ local function applyNoClip()
 end
 
 refreshNoClip = function()
-	local active = noClipOn or flyCollisionBypass
+	local active = noClipOn
 	if not active then
 		if noClipConn then
 			pcall(function() noClipConn:Disconnect() end)
