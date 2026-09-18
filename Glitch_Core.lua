@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V79
+  VER: V80
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V79"
+local GLITCH_CORE_VER = "V80"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -716,18 +716,11 @@ local function playerIsCarryingEgg(plr, records, worldCarriers)
 	local char = plr.Character
 	if not char then return false end
 	if char:GetAttribute("IsCarryingEgg") == true or hasEggSignal(char) then return true end
-	-- Carried eggs are not consistently named/attributed on other clients.
-	-- The reliable visible fallback is a non-combat Tool actually equipped in
-	-- the target's character (not their Backpack).
-	local heldNonCombatTool = false
+	-- A normal non-combat Tool is not evidence of an egg: bases and finish
+	-- areas contain several of them, which previously produced false targets.
 	for _, item in ipairs(char:GetDescendants()) do
 		if item:IsA("Tool") then
 			if hasEggSignal(item) or item:GetAttribute("IsEgg") == true or item:GetAttribute("EggUid") ~= nil then return true end
-			local name = item.Name:lower()
-			if not (name:find("bat", 1, true) or name:find("club", 1, true)
-				or name:find("sword", 1, true) or name:find("blade", 1, true)) then
-				heldNonCombatTool = true
-			end
 		elseif item:IsA("Model") or item:IsA("BasePart") then
 			if hasEggSignal(item) or item:GetAttribute("IsEgg") == true or item:GetAttribute("EggUid") ~= nil then return true end
 		end
@@ -738,7 +731,7 @@ local function playerIsCarryingEgg(plr, records, worldCarriers)
 		end
 	end
 	if (worldCarriers or visibleWorldCarriers())[plr] then return true end
-	return heldNonCombatTool
+	return false
 end
 
 local function findZoneFolder(name)
@@ -818,6 +811,19 @@ local function isInsideBiomeBounds(pos, biome)
 	return math.abs(lp.X) <= half.X + 40
 		and math.abs(lp.Y) <= half.Y + 80
 		and math.abs(lp.Z) <= half.Z + 40
+end
+
+-- Carrier interception is deliberately limited to field zones.  A player at
+-- their plot/finish must never be selected even if a nearby visual happens to
+-- look like an egg to the client.
+local function isInsideAnyEggField(pos)
+	if not pos then return false end
+	for _, biome in ipairs(CFG.biomes) do
+		local inBounds = isInsideBiomeBounds(pos, biome)
+		if inBounds == true then return true end
+		if inBounds == nil and nearBiomeCenter(pos, biome) then return true end
+	end
+	return false
 end
 
 local function eggInSelectedBiome(egg, record)
@@ -1774,7 +1780,7 @@ local function nearestEggCarrier()
 	for _, plr in ipairs(Players:GetPlayers()) do
 		local char = plr.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart")
-		if root and playerIsCarryingEgg(plr, records, worldCarriers) then
+		if root and isInsideAnyEggField(root.Position) and playerIsCarryingEgg(plr, records, worldCarriers) then
 			local dist = (root.Position - hrp.Position).Magnitude
 			local value, rarity = carriedEggValue(plr, records)
 			if not bestValue or value > bestValue or (value == bestValue and dist < bestDist) then
