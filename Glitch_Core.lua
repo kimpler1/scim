@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V87
+  VER: V88
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V87"
+local GLITCH_CORE_VER = "V88"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -78,6 +78,7 @@ local flyOn, flySpeed = false, 60
 local infiniteJumpOn, noClipOn = false, false
 local moveConn
 local flyConn, flyVelocity = nil, nil
+local auraVelocity = nil
 local infiniteJumpConn, noClipConn
 local noClipOriginal = setmetatable({}, { __mode = "k" })
 local refreshNoClip
@@ -629,30 +630,39 @@ local function biomeAliases(name)
 	return { name }
 end
 
--- One continuous pursuit step for Bat Aura.  Unlike stealMoveTo this never
--- waits to reach a waypoint, so the target position is refreshed every frame.
+local function stopAuraFollowMotion()
+	if auraVelocity then
+		pcall(function() auraVelocity:Destroy() end)
+		auraVelocity = nil
+	end
+	local hum = getHum()
+	if hum then hum.PlatformStand = false end
+end
+
+-- One continuous, physics-driven pursuit step for Bat Aura.  This uses the
+-- same BodyVelocity method as Fly instead of teleporting with CFrame.
 local function chaseCarrierStep(targetPosition, speed)
 	local root = getHRP()
 	if not root or not targetPosition or not isFiniteVec(root.Position) then return false end
 	local hum = getHum()
-	if hum then
-		hum.Sit = false
-		hum.PlatformStand = false
-	end
-	local dt = RunService.Heartbeat:Wait()
-	if typeof(dt) ~= "number" or dt <= 0 then dt = 1 / 60 end
-	root = getHRP()
-	if not root then return false end
-	-- Keep the target's height rather than re-sampling the ground every frame.
-	-- Ground re-sampling was the source of visible vertical jitter while chasing.
+	if not hum then return false end
+	hum.Sit = false
 	local destination = Vector3.new(targetPosition.X, targetPosition.Y, targetPosition.Z)
 	local delta = destination - root.Position
 	if not isFiniteVec(delta) then return false end
 	local distance = delta.Magnitude
-	if distance <= 0.7 then return true end
-	local nextPosition = root.Position + delta.Unit * math.min(distance, (speed or CFG.approachSpeed) * dt)
-	local horizontal = Vector3.new(delta.X, 0, delta.Z)
-	anchor(root, horizontal.Magnitude > 0.05 and CFrame.lookAt(nextPosition, nextPosition + horizontal) or CFrame.new(nextPosition))
+	if not auraVelocity or auraVelocity.Parent ~= root then
+		stopAuraFollowMotion()
+		auraVelocity = Instance.new("BodyVelocity")
+		auraVelocity.Name = "GlitchAuraVelocity"
+		auraVelocity.MaxForce = Vector3.new(90000, 90000, 90000)
+		auraVelocity.P = 30000
+		auraVelocity.Parent = root
+	end
+	root.Anchored = false
+	hum.PlatformStand = true
+	auraVelocity.Velocity = distance > 1.1 and delta.Unit * (speed or CFG.escapeSpeed) or Vector3.zero
+	RunService.Heartbeat:Wait()
 	return true
 end
 
@@ -1976,8 +1986,7 @@ local function interceptCarrierOnce()
 	local dropped, swingAt = nil, nil
 	for _ = 1, 600 do
 		if not autoFarm then
-			local stoppedHum = getHum()
-			if stoppedHum then stoppedHum.PlatformStand = false end
+			stopAuraFollowMotion()
 			return false
 		end
 		root = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
@@ -2016,6 +2025,7 @@ local function interceptCarrierOnce()
 			if dropped then break end
 		end
 	end
+	stopAuraFollowMotion()
 	if not dropped and not carrierLost then return false end
 	local finalRoot = getHRP()
 	local dropPos = root and root.Position or (finalRoot and finalRoot.Position)
@@ -2964,6 +2974,7 @@ end
 
 function Api.stopFarm()
 	autoFarm = false
+	stopAuraFollowMotion()
 	cancelManualDeliverAssist()
 	local hum = getHum()
 	if hum then hum.PlatformStand = false end
@@ -3037,6 +3048,7 @@ end
 
 function Api.destroy()
 	autoFarm = false
+	stopAuraFollowMotion()
 	stopFly()
 	setInfiniteJump(false)
 	setNoClip(false)
