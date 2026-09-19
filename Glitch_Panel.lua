@@ -4,7 +4,7 @@
   VER: V78
 ]]
 
-local GLITCH_UI_VER = "V97"
+local GLITCH_UI_VER = "V98"
 local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v91"
 
 local Players = game:GetService("Players")
@@ -436,8 +436,8 @@ local function glassRow(parent, height)
 	r.Size = UDim2.new(1, 0, 0, height or 48)
 	r.BackgroundColor3 = ROW
 	r:SetAttribute("ThemeRow", true)
-	-- Individual controls are deliberately a little denser than their group.
-	r.BackgroundTransparency = 0.15
+	-- Controls are 15% denser than the original glass treatment.
+	r.BackgroundTransparency = 0.10
 	r.BorderSizePixel = 0
 	r.Parent = parent
 	corner(r, 12)
@@ -452,8 +452,8 @@ local function controlGroup(parent, height)
 	group.Size = UDim2.new(1, 0, 0, height)
 	group.BackgroundColor3 = Color3.fromRGB(46, 40, 76)
 	group:SetAttribute("ThemeGroup", true)
-	-- Keep the enclosing group visibly lighter than the controls inside it.
-	group.BackgroundTransparency = 0.7
+	-- Group containers stay 20% lighter than their original treatment.
+	group.BackgroundTransparency = 0.8
 	group.BorderSizePixel = 0
 	group.Parent = parent
 	corner(group, 14)
