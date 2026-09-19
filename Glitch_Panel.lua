@@ -4,7 +4,7 @@
   VER: V78
 ]]
 
-local GLITCH_UI_VER = "V94"
+local GLITCH_UI_VER = "V95"
 local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v91"
 
 local Players = game:GetService("Players")
@@ -722,24 +722,77 @@ navItem("Auto", "Auto")
 navItem("ESP", "ESP")
 
 -- GENERAL
-local langGroup = controlGroup(generalPage, 116)
-sectionLabel(langGroup, "Language")
-local ruButton, enButton
-ruButton = makeActionButton(langGroup, "Русский", function()
-	setStatus("Language · Русский")
-	ruButton.BackgroundTransparency, enButton.BackgroundTransparency = 0.05, 0.48
+local langGroup = controlGroup(generalPage, 56)
+local languageRow = glassRow(langGroup, 32)
+languageRow.LayoutOrder = 1
+local languageLabel = Instance.new("TextLabel")
+languageLabel.BackgroundTransparency = 1
+languageLabel.Position = UDim2.fromOffset(14, 0)
+languageLabel.Size = UDim2.new(0, 104, 1, 0)
+languageLabel.Font = Enum.Font.GothamBold
+languageLabel.TextSize = 12
+languageLabel.TextColor3 = TEXT
+languageLabel.TextXAlignment = Enum.TextXAlignment.Left
+languageLabel.Text = "Language"
+languageLabel.Parent = languageRow
+
+local languageSelect = Instance.new("TextButton")
+languageSelect.Size = UDim2.fromOffset(156, 24)
+languageSelect.Position = UDim2.new(1, -166, 0.5, -12)
+languageSelect.BackgroundColor3 = ACCENT_SOFT
+languageSelect.BorderSizePixel = 0
+languageSelect.Font = Enum.Font.GothamBold
+languageSelect.TextSize = 11
+languageSelect.TextColor3 = TEXT
+languageSelect.Text = "English  ▾"
+languageSelect.Parent = languageRow
+languageSelect:SetAttribute("ThemeAction", true)
+corner(languageSelect, 7)
+
+local languageMenu = Instance.new("Frame")
+languageMenu.Size = UDim2.fromOffset(156, 138)
+languageMenu.Position = UDim2.new(1, -166, 1, 5)
+languageMenu.BackgroundColor3 = GLASS2
+languageMenu.BorderSizePixel = 0
+languageMenu.Visible = false
+languageMenu.ZIndex = 20
+languageMenu.Parent = languageRow
+corner(languageMenu, 9)
+stroke(languageMenu, Color3.fromRGB(180, 170, 255), 1)
+pad(languageMenu, 5, 5, 5, 5)
+local menuList = Instance.new("UIListLayout")
+menuList.Padding = UDim.new(0, 3)
+menuList.Parent = languageMenu
+for _, language in ipairs({ "Русский", "English", "Deutsch", "Français", "Español" }) do
+	local option = Instance.new("TextButton")
+	option.Size = UDim2.new(1, 0, 0, 23)
+	option.BackgroundColor3 = ROW
+	option.BackgroundTransparency = 0.18
+	option.BorderSizePixel = 0
+	option.Font = Enum.Font.GothamBold
+	option.TextSize = 11
+	option.TextColor3 = TEXT
+	option.Text = language
+	option.ZIndex = 21
+	option.Parent = languageMenu
+	corner(option, 6)
+	option.MouseButton1Click:Connect(function()
+		languageSelect.Text = language .. "  ▾"
+		languageMenu.Visible = false
+		setStatus("Language · " .. language)
+	end)
+end
+languageSelect.MouseButton1Click:Connect(function()
+	languageMenu.Visible = not languageMenu.Visible
 end)
-enButton = makeActionButton(langGroup, "English", function()
-	setStatus("Language · English")
-	ruButton.BackgroundTransparency, enButton.BackgroundTransparency = 0.48, 0.05
-end)
-ruButton.BackgroundTransparency, enButton.BackgroundTransparency = 0.48, 0.05
 
 local themeGroup = controlGroup(generalPage, 88)
-sectionLabel(themeGroup, "Theme")
+local themeLabel = sectionLabel(themeGroup, "Theme")
+themeLabel.LayoutOrder = 1
 local themeRow = Instance.new("Frame")
 themeRow.Size = UDim2.new(1, 0, 0, 32)
 themeRow.BackgroundTransparency = 1
+themeRow.LayoutOrder = 2
 themeRow.Parent = themeGroup
 for i, theme in ipairs(THEMES) do
 	local swatch = Instance.new("TextButton")
@@ -762,14 +815,22 @@ for i, theme in ipairs(THEMES) do
 	end)
 end
 
-local linksGroup = controlGroup(generalPage, 116)
-sectionLabel(linksGroup, "Links")
-makeActionButton(linksGroup, "Bypass Bot", function(button)
+local linksGroup = controlGroup(generalPage, 48)
+local linksRow = Instance.new("Frame")
+linksRow.Size = UDim2.new(1, 0, 0, 32)
+linksRow.BackgroundTransparency = 1
+linksRow.LayoutOrder = 1
+linksRow.Parent = linksGroup
+local bypassButton = makeActionButton(linksRow, "Bypass Bot", function(button)
 	openOrCopyLink("https://t.me/bypas_bot", button)
 end)
-makeActionButton(linksGroup, "More Scripts", function(button)
+bypassButton.Size = UDim2.new(0.5, -4, 1, 0)
+bypassButton.Position = UDim2.fromOffset(0, 0)
+local moreButton = makeActionButton(linksRow, "More Scripts", function(button)
 	openOrCopyLink("https://t.me/robloxskriptandsoft", button)
 end)
+moreButton.Size = UDim2.new(0.5, -4, 1, 0)
+moreButton.Position = UDim2.new(0.5, 4, 0, 0)
 
 local eggTargetGroup = controlGroup(mainPage, 132)
 local zoneRow = glassRow(eggTargetGroup, 34)
