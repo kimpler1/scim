@@ -4,7 +4,7 @@
   VER: V78
 ]]
 
-local GLITCH_UI_VER = "V99"
+local GLITCH_UI_VER = "V100"
 local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v91"
 
 local Players = game:GetService("Players")
@@ -510,9 +510,9 @@ end
 local function glassRow(parent, height)
 	local r = Instance.new("Frame")
 	r.Size = UDim2.new(1, 0, 0, height or 48)
-	r.BackgroundColor3 = ROW:Lerp(Color3.new(1, 1, 1), 0.10)
+	r.BackgroundColor3 = ROW
 	r:SetAttribute("ThemeRow", true)
-	-- Function rows are 10% lighter than the base panel color.
+	-- Keep the original darker glass treatment for function rows.
 	r.BackgroundTransparency = 0.10
 	r.BorderSizePixel = 0
 	r.Parent = parent
@@ -528,8 +528,8 @@ local function controlGroup(parent, height)
 	group.Size = UDim2.new(1, 0, 0, height)
 	group.BackgroundColor3 = Color3.fromRGB(46, 40, 76)
 	group:SetAttribute("ThemeGroup", true)
-	-- Group containers stay 10% more transparent than the previous treatment.
-	group.BackgroundTransparency = 0.9
+	-- Keep groups subtly lighter than the functions they contain.
+	group.BackgroundTransparency = 0.8
 	group.BorderSizePixel = 0
 	group.Parent = parent
 	corner(group, 14)
@@ -828,7 +828,7 @@ languageSelect.BorderSizePixel = 0
 languageSelect.Font = Enum.Font.GothamBold
 languageSelect.TextSize = 11
 languageSelect.TextColor3 = TEXT
-languageSelect.Text = "English  v"
+languageSelect.Text = "English"
 languageSelect.ZIndex = 31
 languageSelect.Parent = languageRow
 languageSelect:SetAttribute("ThemeAction", true)
@@ -865,7 +865,7 @@ for _, language in ipairs(LANGUAGES) do
 	corner(option, 6)
 	option.MouseButton1Click:Connect(function()
 		applyLanguage(language.code)
-		languageSelect.Text = language.name .. "  v"
+		languageSelect.Text = language.name
 		languageMenu.Visible = false
 		setStatus("Language · " .. language.name)
 	end)
