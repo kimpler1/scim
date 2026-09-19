@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V90
+  VER: V91
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V90"
+local GLITCH_CORE_VER = "V91"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -883,7 +883,7 @@ end
 -- A carrier event is derived from a real slot disappearing while a player is
 -- next to it.  This is stronger than guessing from their avatar/backpack.
 local carrierSlotCache, recentCarrierPickups, carrierSlotScanAt = nil, {}, 0
-local trackedCarrierEggs = {} -- [uid] = { lastPos, carrier, expires, dropSeenAt }
+local CarrierState = { eggs = {} } -- [uid] = { lastPos, carrier, expires, dropSeenAt }
 local function recentSlotPickups()
 	local now = tick()
 	if now - carrierSlotScanAt < 0.15 then return recentCarrierPickups end
@@ -912,7 +912,7 @@ local function recentSlotPickups()
 				end
 				if closest then
 					recentCarrierPickups[closest] = { uid = uid, expires = now + 5 }
-					trackedCarrierEggs[uid] = { lastPos = oldPos, carrier = closest, expires = now + 30 }
+					CarrierState.eggs[uid] = { lastPos = oldPos, carrier = closest, expires = now + 30 }
 				end
 			end
 		end
@@ -921,8 +921,8 @@ local function recentSlotPickups()
 	for plr, event in pairs(recentCarrierPickups) do
 		if not plr.Parent or event.expires <= now then recentCarrierPickups[plr] = nil end
 	end
-	for uid, session in pairs(trackedCarrierEggs) do
-		if session.expires <= now then trackedCarrierEggs[uid] = nil end
+	for uid, session in pairs(CarrierState.eggs) do
+		if session.expires <= now then CarrierState.eggs[uid] = nil end
 	end
 	return recentCarrierPickups
 end
@@ -1914,7 +1914,6 @@ local function carriedEggUid(plr, records)
 	return nil
 end
 
-local recentRepickUid
 local function nearestEggCarrier()
 	local hrp = getHRP()
 	if not hrp then return nil end
@@ -1926,7 +1925,16 @@ local function nearestEggCarrier()
 		local char = plr.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart")
 		local pickup = pickupEvents[plr]
-		local repickUid, repickSession = root and recentRepickUid(root.Position)
+		local repickUid, repickSession
+		if root then
+			for uid, session in pairs(CarrierState.eggs) do
+				if session.dropSeenAt and tick() - session.dropSeenAt <= 3
+					and session.lastPos and (root.Position - session.lastPos).Magnitude <= 35 then
+					repickUid, repickSession = uid, session
+					break
+				end
+			end
+		end
 		local confirmed = (pickup and pickup.expires > tick()) or repickUid
 		if root and (confirmed or (isInsideAnyEggField(root.Position) and isNearLiveFieldEgg(root.Position)
 			and playerIsCarryingEgg(plr, records, worldCarriers))) then
@@ -1978,32 +1986,19 @@ local function findDroppedNear(position, radius, expectedUid)
 	return best
 end
 
-local function findTrackedEggDrop()
+local function interceptCarrierOnce()
+	local trackedDrop, trackedUid
 	local now = tick()
-	for uid, session in pairs(trackedCarrierEggs) do
+	for uid, session in pairs(CarrierState.eggs) do
 		if session.lastPos and session.expires > now then
-			local dropped = findDroppedNear(session.lastPos, 90, uid)
-			if dropped then
-				session.lastPos = dropped.Position
-				session.dropSeenAt = now
-				return dropped, uid
+			local candidate = findDroppedNear(session.lastPos, 90, uid)
+			if candidate then
+				session.lastPos, session.dropSeenAt = candidate.Position, now
+				trackedDrop, trackedUid = candidate, uid
+				break
 			end
 		end
 	end
-end
-
-recentRepickUid = function(position)
-	local now = tick()
-	for uid, session in pairs(trackedCarrierEggs) do
-		if session.dropSeenAt and now - session.dropSeenAt <= 3
-			and session.lastPos and (position - session.lastPos).Magnitude <= 35 then
-			return uid, session
-		end
-	end
-end
-
-local function interceptCarrierOnce()
-	local trackedDrop, trackedUid = findTrackedEggDrop()
 	if trackedDrop then
 		setStatus("Recover tracked egg")
 		if approachAndSteal(trackedDrop, CFG.approachSpeed) then
@@ -2020,10 +2015,10 @@ local function interceptCarrierOnce()
 	local me = getHRP()
 	if not (root and me) then return false end
 	if carriedUid then
-		trackedCarrierEggs[carriedUid] = trackedCarrierEggs[carriedUid] or {}
-		trackedCarrierEggs[carriedUid].carrier = target
-		trackedCarrierEggs[carriedUid].lastPos = root.Position
-		trackedCarrierEggs[carriedUid].expires = tick() + 30
+		CarrierState.eggs[carriedUid] = CarrierState.eggs[carriedUid] or {}
+		CarrierState.eggs[carriedUid].carrier = target
+		CarrierState.eggs[carriedUid].lastPos = root.Position
+		CarrierState.eggs[carriedUid].expires = tick() + 30
 	end
 	setStatus("Track " .. target.DisplayName .. " · " .. tostring(rarity))
 	-- Stay just behind the carrier rather than chasing the position they occupied
@@ -2046,10 +2041,10 @@ local function interceptCarrierOnce()
 			carrierLost = true
 			break
 		end
-		if carriedUid and trackedCarrierEggs[carriedUid] then
-			trackedCarrierEggs[carriedUid].carrier = target
-			trackedCarrierEggs[carriedUid].lastPos = root.Position
-			trackedCarrierEggs[carriedUid].expires = tick() + 30
+		if carriedUid and CarrierState.eggs[carriedUid] then
+			CarrierState.eggs[carriedUid].carrier = target
+			CarrierState.eggs[carriedUid].lastPos = root.Position
+			CarrierState.eggs[carriedUid].expires = tick() + 30
 		end
 		me = getHRP()
 		if me then
@@ -2076,9 +2071,9 @@ local function interceptCarrierOnce()
 			dropped = carriedUid and findDroppedNear(root.Position, 45, carriedUid) or nil
 			if not dropped then dropped = findDroppedNear(root.Position, 30) end
 			if dropped then
-				if carriedUid and trackedCarrierEggs[carriedUid] then
-					trackedCarrierEggs[carriedUid].lastPos = dropped.Position
-					trackedCarrierEggs[carriedUid].dropSeenAt = tick()
+				if carriedUid and CarrierState.eggs[carriedUid] then
+					CarrierState.eggs[carriedUid].lastPos = dropped.Position
+					CarrierState.eggs[carriedUid].dropSeenAt = tick()
 				end
 				break
 			end
