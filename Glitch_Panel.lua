@@ -4,7 +4,7 @@
   VER: V78
 ]]
 
-local GLITCH_UI_VER = "V95"
+local GLITCH_UI_VER = "V96"
 local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v91"
 
 local Players = game:GetService("Players")
@@ -20,13 +20,6 @@ local SIDE = Color3.fromRGB(18, 16, 32)
 local TEXT = Color3.fromRGB(245, 245, 250)
 local MUTED = Color3.fromRGB(160, 155, 185)
 local ROW = Color3.fromRGB(36, 32, 58)
-
-local THEMES = {
-	{ name = "Violet", accent = Color3.fromRGB(120, 110, 255), glass = Color3.fromRGB(28, 24, 48), side = Color3.fromRGB(18, 16, 32) },
-	{ name = "Ocean", accent = Color3.fromRGB(72, 185, 255), glass = Color3.fromRGB(18, 36, 58), side = Color3.fromRGB(12, 25, 42) },
-	{ name = "Emerald", accent = Color3.fromRGB(74, 220, 170), glass = Color3.fromRGB(19, 47, 43), side = Color3.fromRGB(12, 31, 29) },
-	{ name = "Sunset", accent = Color3.fromRGB(255, 142, 94), glass = Color3.fromRGB(57, 32, 44), side = Color3.fromRGB(37, 20, 31) },
-}
 
 local BIOMES = {
 	"Forest", "Lake", "Desert", "Jungle", "Snow", "Volcano",
@@ -443,7 +436,8 @@ local function glassRow(parent, height)
 	r.Size = UDim2.new(1, 0, 0, height or 48)
 	r.BackgroundColor3 = ROW
 	r:SetAttribute("ThemeRow", true)
-	r.BackgroundTransparency = 0.25
+	-- Individual controls are deliberately a little denser than their group.
+	r.BackgroundTransparency = 0.15
 	r.BorderSizePixel = 0
 	r.Parent = parent
 	corner(r, 12)
@@ -458,7 +452,8 @@ local function controlGroup(parent, height)
 	group.Size = UDim2.new(1, 0, 0, height)
 	group.BackgroundColor3 = Color3.fromRGB(46, 40, 76)
 	group:SetAttribute("ThemeGroup", true)
-	group.BackgroundTransparency = 0.6
+	-- Keep the enclosing group visibly lighter than the controls inside it.
+	group.BackgroundTransparency = 0.7
 	group.BorderSizePixel = 0
 	group.Parent = parent
 	corner(group, 14)
@@ -672,22 +667,6 @@ local function makeActionButton(parent, text, callback)
 	return button
 end
 
-local function applyTheme(theme)
-	ACCENT = theme.accent
-	ACCENT_SOFT = theme.accent:Lerp(Color3.new(0, 0, 0), 0.3)
-	win.BackgroundColor3 = theme.glass
-	header.BackgroundColor3 = theme.side
-	sidebar.BackgroundColor3 = theme.side
-	content.BackgroundColor3 = theme.glass:Lerp(Color3.new(0, 0, 0), 0.2)
-	for _, inst in ipairs(gui:GetDescendants()) do
-		if inst:GetAttribute("ThemeAccent") then inst.BackgroundColor3 = ACCENT end
-		if inst:GetAttribute("ThemeAccentText") then inst.TextColor3 = ACCENT end
-		if inst:GetAttribute("ThemeAction") then inst.BackgroundColor3 = ACCENT_SOFT end
-		if inst:GetAttribute("ThemeRow") then inst.BackgroundColor3 = theme.glass:Lerp(Color3.new(1, 1, 1), 0.08) end
-		if inst:GetAttribute("ThemeGroup") then inst.BackgroundColor3 = theme.glass:Lerp(ACCENT, 0.22) end
-	end
-end
-
 local function openOrCopyLink(url, button)
 	local copied = false
 	if typeof(setclipboard) == "function" then
@@ -722,9 +701,7 @@ navItem("Auto", "Auto")
 navItem("ESP", "ESP")
 
 -- GENERAL
-local langGroup = controlGroup(generalPage, 56)
-local languageRow = glassRow(langGroup, 32)
-languageRow.LayoutOrder = 1
+local languageRow = glassRow(generalPage, 32)
 local languageLabel = Instance.new("TextLabel")
 languageLabel.BackgroundTransparency = 1
 languageLabel.Position = UDim2.fromOffset(14, 0)
@@ -752,7 +729,8 @@ corner(languageSelect, 7)
 local languageMenu = Instance.new("Frame")
 languageMenu.Size = UDim2.fromOffset(156, 138)
 languageMenu.Position = UDim2.new(1, -166, 1, 5)
-languageMenu.BackgroundColor3 = GLASS2
+languageMenu.BackgroundColor3 = Color3.fromRGB(25, 23, 43)
+languageMenu.BackgroundTransparency = 0
 languageMenu.BorderSizePixel = 0
 languageMenu.Visible = false
 languageMenu.ZIndex = 20
@@ -767,7 +745,7 @@ for _, language in ipairs({ "Русский", "English", "Deutsch", "Français",
 	local option = Instance.new("TextButton")
 	option.Size = UDim2.new(1, 0, 0, 23)
 	option.BackgroundColor3 = ROW
-	option.BackgroundTransparency = 0.18
+	option.BackgroundTransparency = 1
 	option.BorderSizePixel = 0
 	option.Font = Enum.Font.GothamBold
 	option.TextSize = 11
@@ -786,41 +764,10 @@ languageSelect.MouseButton1Click:Connect(function()
 	languageMenu.Visible = not languageMenu.Visible
 end)
 
-local themeGroup = controlGroup(generalPage, 88)
-local themeLabel = sectionLabel(themeGroup, "Theme")
-themeLabel.LayoutOrder = 1
-local themeRow = Instance.new("Frame")
-themeRow.Size = UDim2.new(1, 0, 0, 32)
-themeRow.BackgroundTransparency = 1
-themeRow.LayoutOrder = 2
-themeRow.Parent = themeGroup
-for i, theme in ipairs(THEMES) do
-	local swatch = Instance.new("TextButton")
-	swatch.Size = UDim2.new(0.25, -5, 1, 0)
-	swatch.Position = UDim2.new((i - 1) * 0.25, (i - 1) * 2, 0, 0)
-	swatch.BackgroundColor3 = theme.accent
-	swatch.BackgroundTransparency = theme.name == "Violet" and 0.05 or 0.25
-	swatch.BorderSizePixel = 0
-	swatch.Text = theme.name
-	swatch.Font = Enum.Font.GothamBold
-	swatch.TextSize = 10
-	swatch.TextColor3 = TEXT
-	swatch.Parent = themeRow
-	corner(swatch, 9)
-	swatch.MouseButton1Click:Connect(function()
-		applyTheme(theme)
-		for _, sibling in ipairs(themeRow:GetChildren()) do
-			if sibling:IsA("TextButton") then sibling.BackgroundTransparency = sibling == swatch and 0.05 or 0.25 end
-		end
-	end)
-end
-
-local linksGroup = controlGroup(generalPage, 48)
 local linksRow = Instance.new("Frame")
 linksRow.Size = UDim2.new(1, 0, 0, 32)
 linksRow.BackgroundTransparency = 1
-linksRow.LayoutOrder = 1
-linksRow.Parent = linksGroup
+linksRow.Parent = generalPage
 local bypassButton = makeActionButton(linksRow, "Bypass Bot", function(button)
 	openOrCopyLink("https://t.me/bypas_bot", button)
 end)
