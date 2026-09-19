@@ -4,7 +4,7 @@
   VER: V78
 ]]
 
-local GLITCH_UI_VER = "V98"
+local GLITCH_UI_VER = "V99"
 local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v91"
 
 local Players = game:GetService("Players")
@@ -38,6 +38,72 @@ local debugLines = {}
 local pages = {}
 local navBtns = {}
 local currentPage = "General"
+local currentLocale = "en"
+
+local LANGUAGES = {
+	{ code = "ru", name = "Русский" },
+	{ code = "en", name = "English" },
+	{ code = "de", name = "Deutsch" },
+	{ code = "fr", name = "Français" },
+	{ code = "es", name = "Español" },
+}
+
+local LOCALES = {
+	ru = {
+		General = "Общее", Main = "Главное", Player = "Игрок", Auto = "Авто", Language = "Язык",
+		["More Scripts"] = "Больше скриптов", ["Steal All Eggs"] = "Забрать все яйца",
+		["Steal Best Egg"] = "Забрать лучшее яйцо", ["Recover Dropped Eggs"] = "Подобрать упавшие яйца",
+		["Bat Aura"] = "Аура биты", ["ESP Players"] = "ESP игроков", ["ESP Eggs"] = "ESP яиц",
+		Speed = "Скорость", ["Walk Speed"] = "Скорость ходьбы", Fly = "Полёт", ["Fly Speed"] = "Скорость полёта",
+		["Infinite Jump"] = "Бесконечный прыжок", ["No Clip"] = "Без столкновений",
+		["Auto Plant All Eggs"] = "Авто посадка всех яиц", ["Auto Hatch Eggs"] = "Авто вылупление яиц",
+		["Auto Equip Best Pets"] = "Авто выбор лучших питомцев", ["Link copied"] = "Ссылка скопирована",
+		["Link unavailable"] = "Ссылка недоступна",
+	},
+	de = {
+		General = "Allgemein", Main = "Haupt", Player = "Spieler", Auto = "Auto", Language = "Sprache",
+		["More Scripts"] = "Mehr Skripte", ["Steal All Eggs"] = "Alle Eier nehmen",
+		["Steal Best Egg"] = "Bestes Ei nehmen", ["Recover Dropped Eggs"] = "Gefallene Eier holen",
+		["Bat Aura"] = "Schläger-Aura", ["ESP Players"] = "ESP Spieler", ["ESP Eggs"] = "ESP Eier",
+		Speed = "Tempo", ["Walk Speed"] = "Lauftempo", Fly = "Fliegen", ["Fly Speed"] = "Flugtempo",
+		["Infinite Jump"] = "Unendlicher Sprung", ["No Clip"] = "Keine Kollision",
+		["Auto Plant All Eggs"] = "Alle Eier automatisch pflanzen", ["Auto Hatch Eggs"] = "Eier automatisch ausbrüten",
+		["Auto Equip Best Pets"] = "Beste Haustiere automatisch wählen", ["Link copied"] = "Link kopiert",
+		["Link unavailable"] = "Link nicht verfügbar",
+	},
+	fr = {
+		General = "Général", Main = "Principal", Player = "Joueur", Auto = "Auto", Language = "Langue",
+		["More Scripts"] = "Plus de scripts", ["Steal All Eggs"] = "Prendre tous les œufs",
+		["Steal Best Egg"] = "Prendre le meilleur œuf", ["Recover Dropped Eggs"] = "Récupérer les œufs tombés",
+		["Bat Aura"] = "Aura de batte", ["ESP Players"] = "ESP joueurs", ["ESP Eggs"] = "ESP œufs",
+		Speed = "Vitesse", ["Walk Speed"] = "Vitesse de marche", Fly = "Vol", ["Fly Speed"] = "Vitesse de vol",
+		["Infinite Jump"] = "Saut infini", ["No Clip"] = "Sans collision",
+		["Auto Plant All Eggs"] = "Planter tous les œufs auto", ["Auto Hatch Eggs"] = "Faire éclore les œufs auto",
+		["Auto Equip Best Pets"] = "Équiper les meilleurs animaux auto", ["Link copied"] = "Lien copié",
+		["Link unavailable"] = "Lien indisponible",
+	},
+	es = {
+		General = "General", Main = "Principal", Player = "Jugador", Auto = "Auto", Language = "Idioma",
+		["More Scripts"] = "Más scripts", ["Steal All Eggs"] = "Tomar todos los huevos",
+		["Steal Best Egg"] = "Tomar el mejor huevo", ["Recover Dropped Eggs"] = "Recoger huevos caídos",
+		["Bat Aura"] = "Aura de bate", ["ESP Players"] = "ESP jugadores", ["ESP Eggs"] = "ESP huevos",
+		Speed = "Velocidad", ["Walk Speed"] = "Velocidad al caminar", Fly = "Volar", ["Fly Speed"] = "Velocidad de vuelo",
+		["Infinite Jump"] = "Salto infinito", ["No Clip"] = "Sin colisión",
+		["Auto Plant All Eggs"] = "Plantar todos los huevos auto", ["Auto Hatch Eggs"] = "Incubar huevos auto",
+		["Auto Equip Best Pets"] = "Equipar mejores mascotas auto", ["Link copied"] = "Enlace copiado",
+		["Link unavailable"] = "Enlace no disponible",
+	},
+}
+
+local function localizedText(key)
+	return (LOCALES[currentLocale] and LOCALES[currentLocale][key]) or key
+end
+
+local function markLocalized(inst, key)
+	inst:SetAttribute("LangKey", key)
+	inst.Text = localizedText(key)
+	return inst
+end
 
 local function resolveHiddenParent()
 	if typeof(gethui) == "function" then
@@ -159,6 +225,16 @@ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.DisplayOrder = 999
 gui.IgnoreGuiInset = true
 local okMount, howMount = mountGui(gui)
+
+local function applyLanguage(code)
+	currentLocale = code
+	for _, inst in ipairs(gui:GetDescendants()) do
+		local key = inst:GetAttribute("LangKey")
+		if key and (inst:IsA("TextLabel") or inst:IsA("TextButton")) then
+			inst.Text = localizedText(key)
+		end
+	end
+end
 
 local win = Instance.new("Frame")
 win.Name = "Window"
@@ -404,7 +480,7 @@ local function navItem(text, pageName, isHeader)
 	label.TextSize = 13
 	label.TextColor3 = TEXT
 	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Text = text
+	markLocalized(label, text)
 	label.Parent = b
 	local bar = Instance.new("Frame")
 	bar.Size = UDim2.new(0, 3, 0, 16)
@@ -434,9 +510,9 @@ end
 local function glassRow(parent, height)
 	local r = Instance.new("Frame")
 	r.Size = UDim2.new(1, 0, 0, height or 48)
-	r.BackgroundColor3 = ROW
+	r.BackgroundColor3 = ROW:Lerp(Color3.new(1, 1, 1), 0.10)
 	r:SetAttribute("ThemeRow", true)
-	-- Controls are 15% denser than the original glass treatment.
+	-- Function rows are 10% lighter than the base panel color.
 	r.BackgroundTransparency = 0.10
 	r.BorderSizePixel = 0
 	r.Parent = parent
@@ -452,8 +528,8 @@ local function controlGroup(parent, height)
 	group.Size = UDim2.new(1, 0, 0, height)
 	group.BackgroundColor3 = Color3.fromRGB(46, 40, 76)
 	group:SetAttribute("ThemeGroup", true)
-	-- Group containers stay 20% lighter than their original treatment.
-	group.BackgroundTransparency = 0.8
+	-- Group containers stay 10% more transparent than the previous treatment.
+	group.BackgroundTransparency = 0.9
 	group.BorderSizePixel = 0
 	group.Parent = parent
 	corner(group, 14)
@@ -475,7 +551,7 @@ local function makeToggle(parent, labelText, default, callback)
 	lbl.TextSize = 12
 	lbl.TextColor3 = TEXT
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	lbl.Text = labelText
+	markLocalized(lbl, labelText)
 	lbl.Parent = row
 
 	local track = Instance.new("TextButton")
@@ -531,7 +607,7 @@ local function makeSlider(parent, labelText, minV, maxV, default, callback)
 	lbl.TextSize = 12
 	lbl.TextColor3 = TEXT
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	lbl.Text = labelText
+	markLocalized(lbl, labelText)
 	lbl.Parent = row
 
 	local valLbl = Instance.new("TextLabel")
@@ -657,7 +733,7 @@ local function makeActionButton(parent, text, callback)
 	button.Font = Enum.Font.GothamBold
 	button.TextSize = 12
 	button.TextColor3 = TEXT
-	button.Text = text
+	markLocalized(button, text)
 	button.Parent = parent
 	button:SetAttribute("ThemeAction", true)
 	corner(button, 9)
@@ -665,6 +741,38 @@ local function makeActionButton(parent, text, callback)
 		if callback then callback(button) end
 	end)
 	return button
+end
+
+local function showLinkToast(button, message)
+	local oldToast = button:FindFirstChild("LinkToast")
+	if oldToast then oldToast:Destroy() end
+	button.ClipsDescendants = false
+	local toast = Instance.new("TextLabel")
+	toast.Name = "LinkToast"
+	toast.Size = UDim2.new(1, 0, 0, 20)
+	toast.Position = UDim2.new(0, 0, 1, -14)
+	toast.BackgroundColor3 = Color3.fromRGB(46, 42, 72)
+	toast.BackgroundTransparency = 0.28
+	toast.BorderSizePixel = 0
+	toast.Font = Enum.Font.GothamBold
+	toast.TextSize = 10
+	toast.TextColor3 = TEXT
+	toast.Text = message
+	toast.ZIndex = button.ZIndex + 2
+	toast.Parent = button
+	corner(toast, 7)
+	TweenService:Create(toast, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Position = UDim2.new(0, 0, 1, 3),
+	}):Play()
+	task.delay(2, function()
+		if not toast.Parent then return end
+		local retreat = TweenService:Create(toast, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			Position = UDim2.new(0, 0, 1, -14),
+		})
+		retreat:Play()
+		retreat.Completed:Wait()
+		if toast.Parent then toast:Destroy() end
+	end)
 end
 
 local function openOrCopyLink(url, button)
@@ -680,11 +788,7 @@ local function openOrCopyLink(url, button)
 	elseif typeof(launch_url) == "function" then
 		opened = pcall(launch_url, url)
 	end
-	local original = button.Text
-	button.Text = opened and "Opening Telegram…" or (copied and "Link copied" or "Link unavailable")
-	task.delay(1.4, function()
-		if button and button.Parent then button.Text = original end
-	end)
+	showLinkToast(button, copied and localizedText("Link copied") or localizedText("Link unavailable"))
 end
 
 -- Pages
@@ -712,7 +816,7 @@ languageLabel.Font = Enum.Font.GothamBold
 languageLabel.TextSize = 12
 languageLabel.TextColor3 = TEXT
 languageLabel.TextXAlignment = Enum.TextXAlignment.Left
-languageLabel.Text = "Language"
+markLocalized(languageLabel, "Language")
 languageLabel.ZIndex = 31
 languageLabel.Parent = languageRow
 
@@ -724,7 +828,7 @@ languageSelect.BorderSizePixel = 0
 languageSelect.Font = Enum.Font.GothamBold
 languageSelect.TextSize = 11
 languageSelect.TextColor3 = TEXT
-languageSelect.Text = "English  ▾"
+languageSelect.Text = "English  v"
 languageSelect.ZIndex = 31
 languageSelect.Parent = languageRow
 languageSelect:SetAttribute("ThemeAction", true)
@@ -746,7 +850,7 @@ pad(languageMenu, 5, 5, 5, 5)
 local menuList = Instance.new("UIListLayout")
 menuList.Padding = UDim.new(0, 3)
 menuList.Parent = languageMenu
-for _, language in ipairs({ "Русский", "English", "Deutsch", "Français", "Español" }) do
+for _, language in ipairs(LANGUAGES) do
 	local option = Instance.new("TextButton")
 	option.Size = UDim2.new(1, 0, 0, 23)
 	option.BackgroundColor3 = ROW
@@ -755,14 +859,15 @@ for _, language in ipairs({ "Русский", "English", "Deutsch", "Français",
 	option.Font = Enum.Font.GothamBold
 	option.TextSize = 11
 	option.TextColor3 = TEXT
-	option.Text = language
+	option.Text = language.name
 	option.ZIndex = 33
 	option.Parent = languageMenu
 	corner(option, 6)
 	option.MouseButton1Click:Connect(function()
-		languageSelect.Text = language .. "  ▾"
+		applyLanguage(language.code)
+		languageSelect.Text = language.name .. "  v"
 		languageMenu.Visible = false
-		setStatus("Language · " .. language)
+		setStatus("Language · " .. language.name)
 	end)
 end
 languageSelect.MouseButton1Click:Connect(function()
@@ -777,12 +882,12 @@ local bypassButton = makeActionButton(linksRow, "Bypass Bot", function(button)
 	openOrCopyLink("https://t.me/bypas_bot", button)
 end)
 bypassButton.Size = UDim2.new(0.5, -4, 1, 0)
-bypassButton.Position = UDim2.fromOffset(0, 0)
+bypassButton.Position = UDim2.new(0.5, 4, 0, 0)
 local moreButton = makeActionButton(linksRow, "More Scripts", function(button)
 	openOrCopyLink("https://t.me/robloxskriptandsoft", button)
 end)
 moreButton.Size = UDim2.new(0.5, -4, 1, 0)
-moreButton.Position = UDim2.new(0.5, 4, 0, 0)
+moreButton.Position = UDim2.fromOffset(0, 0)
 
 local eggTargetGroup = controlGroup(mainPage, 132)
 local zoneRow = glassRow(eggTargetGroup, 34)
