@@ -4,7 +4,7 @@
   VER: V78
 ]]
 
-local GLITCH_UI_VER = "V93"
+local GLITCH_UI_VER = "V94"
 local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v91"
 
 local Players = game:GetService("Players")
@@ -20,6 +20,13 @@ local SIDE = Color3.fromRGB(18, 16, 32)
 local TEXT = Color3.fromRGB(245, 245, 250)
 local MUTED = Color3.fromRGB(160, 155, 185)
 local ROW = Color3.fromRGB(36, 32, 58)
+
+local THEMES = {
+	{ name = "Violet", accent = Color3.fromRGB(120, 110, 255), glass = Color3.fromRGB(28, 24, 48), side = Color3.fromRGB(18, 16, 32) },
+	{ name = "Ocean", accent = Color3.fromRGB(72, 185, 255), glass = Color3.fromRGB(18, 36, 58), side = Color3.fromRGB(12, 25, 42) },
+	{ name = "Emerald", accent = Color3.fromRGB(74, 220, 170), glass = Color3.fromRGB(19, 47, 43), side = Color3.fromRGB(12, 31, 29) },
+	{ name = "Sunset", accent = Color3.fromRGB(255, 142, 94), glass = Color3.fromRGB(57, 32, 44), side = Color3.fromRGB(37, 20, 31) },
+}
 
 local BIOMES = {
 	"Forest", "Lake", "Desert", "Jungle", "Snow", "Volcano",
@@ -37,7 +44,7 @@ local statusLbl, biomeLbl
 local debugLines = {}
 local pages = {}
 local navBtns = {}
-local currentPage = "Main"
+local currentPage = "General"
 
 local function resolveHiddenParent()
 	if typeof(gethui) == "function" then
@@ -410,6 +417,7 @@ local function navItem(text, pageName, isHeader)
 	bar.Size = UDim2.new(0, 3, 0, 16)
 	bar.Position = UDim2.new(0, 4, 0.5, -8)
 	bar.BackgroundColor3 = ACCENT
+	bar:SetAttribute("ThemeAccent", true)
 	bar.BorderSizePixel = 0
 	bar.Visible = false
 	bar.Parent = b
@@ -434,6 +442,7 @@ local function glassRow(parent, height)
 	local r = Instance.new("Frame")
 	r.Size = UDim2.new(1, 0, 0, height or 48)
 	r.BackgroundColor3 = ROW
+	r:SetAttribute("ThemeRow", true)
 	r.BackgroundTransparency = 0.25
 	r.BorderSizePixel = 0
 	r.Parent = parent
@@ -448,6 +457,7 @@ local function controlGroup(parent, height)
 	local group = Instance.new("Frame")
 	group.Size = UDim2.new(1, 0, 0, height)
 	group.BackgroundColor3 = Color3.fromRGB(46, 40, 76)
+	group:SetAttribute("ThemeGroup", true)
 	group.BackgroundTransparency = 0.6
 	group.BorderSizePixel = 0
 	group.Parent = parent
@@ -477,6 +487,7 @@ local function makeToggle(parent, labelText, default, callback)
 	track.Size = UDim2.fromOffset(42, 22)
 	track.Position = UDim2.new(1, -54, 0.5, -11)
 	track.BackgroundColor3 = Color3.fromRGB(55, 52, 75)
+	track:SetAttribute("ThemeToggle", true)
 	track.Text = ""
 	track.BorderSizePixel = 0
 	track.AutoButtonColor = false
@@ -535,6 +546,7 @@ local function makeSlider(parent, labelText, minV, maxV, default, callback)
 	valLbl.Font = Enum.Font.GothamBold
 	valLbl.TextSize = 12
 	valLbl.TextColor3 = ACCENT
+	valLbl:SetAttribute("ThemeAccentText", true)
 	valLbl.TextXAlignment = Enum.TextXAlignment.Right
 	valLbl.Text = tostring(default)
 	valLbl.Parent = row
@@ -550,6 +562,7 @@ local function makeSlider(parent, labelText, minV, maxV, default, callback)
 	local fill = Instance.new("Frame")
 	fill.Size = UDim2.new((default - minV) / (maxV - minV), 0, 1, 0)
 	fill.BackgroundColor3 = ACCENT
+	fill:SetAttribute("ThemeAccent", true)
 	fill.BorderSizePixel = 0
 	fill.Parent = bar
 	corner(fill, 3)
@@ -639,16 +652,124 @@ local function makeNumRow(parent, leftText, rightText, leftDef, rightDef, onLeft
 	return a, b
 end
 
+local function makeActionButton(parent, text, callback)
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.new(1, 0, 0, 30)
+	button.BackgroundColor3 = ACCENT_SOFT
+	button.BackgroundTransparency = 0.22
+	button.BorderSizePixel = 0
+	button.AutoButtonColor = false
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 12
+	button.TextColor3 = TEXT
+	button.Text = text
+	button.Parent = parent
+	button:SetAttribute("ThemeAction", true)
+	corner(button, 9)
+	button.MouseButton1Click:Connect(function()
+		if callback then callback(button) end
+	end)
+	return button
+end
+
+local function applyTheme(theme)
+	ACCENT = theme.accent
+	ACCENT_SOFT = theme.accent:Lerp(Color3.new(0, 0, 0), 0.3)
+	win.BackgroundColor3 = theme.glass
+	header.BackgroundColor3 = theme.side
+	sidebar.BackgroundColor3 = theme.side
+	content.BackgroundColor3 = theme.glass:Lerp(Color3.new(0, 0, 0), 0.2)
+	for _, inst in ipairs(gui:GetDescendants()) do
+		if inst:GetAttribute("ThemeAccent") then inst.BackgroundColor3 = ACCENT end
+		if inst:GetAttribute("ThemeAccentText") then inst.TextColor3 = ACCENT end
+		if inst:GetAttribute("ThemeAction") then inst.BackgroundColor3 = ACCENT_SOFT end
+		if inst:GetAttribute("ThemeRow") then inst.BackgroundColor3 = theme.glass:Lerp(Color3.new(1, 1, 1), 0.08) end
+		if inst:GetAttribute("ThemeGroup") then inst.BackgroundColor3 = theme.glass:Lerp(ACCENT, 0.22) end
+	end
+end
+
+local function openOrCopyLink(url, button)
+	local copied = false
+	if typeof(setclipboard) == "function" then
+		copied = pcall(setclipboard, url)
+	elseif typeof(toclipboard) == "function" then
+		copied = pcall(toclipboard, url)
+	end
+	local opened = false
+	if typeof(open_url) == "function" then
+		opened = pcall(open_url, url)
+	elseif typeof(launch_url) == "function" then
+		opened = pcall(launch_url, url)
+	end
+	local original = button.Text
+	button.Text = opened and "Opening Telegram…" or (copied and "Link copied" or "Link unavailable")
+	task.delay(1.4, function()
+		if button and button.Parent then button.Text = original end
+	end)
+end
+
 -- Pages
+local generalPage = makePage("General")
 local mainPage = makePage("Main")
 local espPage = makePage("ESP")
 local playerPage = makePage("Player")
 local autoPage = makePage("Auto")
 
+navItem("General", "General")
 navItem("Main", "Main")
-navItem("ESP", "ESP")
 navItem("Player", "Player")
 navItem("Auto", "Auto")
+navItem("ESP", "ESP")
+
+-- GENERAL
+local langGroup = controlGroup(generalPage, 116)
+sectionLabel(langGroup, "Language")
+local ruButton, enButton
+ruButton = makeActionButton(langGroup, "Русский", function()
+	setStatus("Language · Русский")
+	ruButton.BackgroundTransparency, enButton.BackgroundTransparency = 0.05, 0.48
+end)
+enButton = makeActionButton(langGroup, "English", function()
+	setStatus("Language · English")
+	ruButton.BackgroundTransparency, enButton.BackgroundTransparency = 0.48, 0.05
+end)
+ruButton.BackgroundTransparency, enButton.BackgroundTransparency = 0.48, 0.05
+
+local themeGroup = controlGroup(generalPage, 88)
+sectionLabel(themeGroup, "Theme")
+local themeRow = Instance.new("Frame")
+themeRow.Size = UDim2.new(1, 0, 0, 32)
+themeRow.BackgroundTransparency = 1
+themeRow.Parent = themeGroup
+for i, theme in ipairs(THEMES) do
+	local swatch = Instance.new("TextButton")
+	swatch.Size = UDim2.new(0.25, -5, 1, 0)
+	swatch.Position = UDim2.new((i - 1) * 0.25, (i - 1) * 2, 0, 0)
+	swatch.BackgroundColor3 = theme.accent
+	swatch.BackgroundTransparency = theme.name == "Violet" and 0.05 or 0.25
+	swatch.BorderSizePixel = 0
+	swatch.Text = theme.name
+	swatch.Font = Enum.Font.GothamBold
+	swatch.TextSize = 10
+	swatch.TextColor3 = TEXT
+	swatch.Parent = themeRow
+	corner(swatch, 9)
+	swatch.MouseButton1Click:Connect(function()
+		applyTheme(theme)
+		for _, sibling in ipairs(themeRow:GetChildren()) do
+			if sibling:IsA("TextButton") then sibling.BackgroundTransparency = sibling == swatch and 0.05 or 0.25 end
+		end
+	end)
+end
+
+local linksGroup = controlGroup(generalPage, 116)
+sectionLabel(linksGroup, "Links")
+makeActionButton(linksGroup, "Bypass Bot", function(button)
+	openOrCopyLink("https://t.me/bypas_bot", button)
+end)
+makeActionButton(linksGroup, "More Scripts", function(button)
+	openOrCopyLink("https://t.me/robloxskriptandsoft", button)
+end)
 
 local eggTargetGroup = controlGroup(mainPage, 132)
 local zoneRow = glassRow(eggTargetGroup, 34)
@@ -863,11 +984,11 @@ autoActionToggle("Auto Hatch Eggs", "hatch")
 autoActionToggle("Auto Equip Best Pets", "equip")
 
 -- default page
-mainPage.Visible = true
-if navBtns.Main then
-	navBtns.Main.bar.Visible = true
-	navBtns.Main.btn.BackgroundTransparency = 0.35
-	navBtns.Main.btn.BackgroundColor3 = Color3.fromRGB(55, 48, 95)
+generalPage.Visible = true
+if navBtns.General then
+	navBtns.General.bar.Visible = true
+	navBtns.General.btn.BackgroundTransparency = 0.35
+	navBtns.General.btn.BackgroundColor3 = Color3.fromRGB(55, 48, 95)
 end
 
 local minimized = false
