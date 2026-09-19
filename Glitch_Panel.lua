@@ -4,7 +4,7 @@
   VER: V78
 ]]
 
-local GLITCH_UI_VER = "V96"
+local GLITCH_UI_VER = "V97"
 local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v91"
 
 local Players = game:GetService("Players")
@@ -702,6 +702,8 @@ navItem("ESP", "ESP")
 
 -- GENERAL
 local languageRow = glassRow(generalPage, 32)
+-- The pop-up belongs above every later page row while it is open.
+languageRow.ZIndex = 30
 local languageLabel = Instance.new("TextLabel")
 languageLabel.BackgroundTransparency = 1
 languageLabel.Position = UDim2.fromOffset(14, 0)
@@ -711,6 +713,7 @@ languageLabel.TextSize = 12
 languageLabel.TextColor3 = TEXT
 languageLabel.TextXAlignment = Enum.TextXAlignment.Left
 languageLabel.Text = "Language"
+languageLabel.ZIndex = 31
 languageLabel.Parent = languageRow
 
 local languageSelect = Instance.new("TextButton")
@@ -722,6 +725,7 @@ languageSelect.Font = Enum.Font.GothamBold
 languageSelect.TextSize = 11
 languageSelect.TextColor3 = TEXT
 languageSelect.Text = "English  ▾"
+languageSelect.ZIndex = 31
 languageSelect.Parent = languageRow
 languageSelect:SetAttribute("ThemeAction", true)
 corner(languageSelect, 7)
@@ -729,11 +733,12 @@ corner(languageSelect, 7)
 local languageMenu = Instance.new("Frame")
 languageMenu.Size = UDim2.fromOffset(156, 138)
 languageMenu.Position = UDim2.new(1, -166, 1, 5)
-languageMenu.BackgroundColor3 = Color3.fromRGB(25, 23, 43)
+languageMenu.BackgroundColor3 = Color3.fromRGB(18, 16, 32)
 languageMenu.BackgroundTransparency = 0
 languageMenu.BorderSizePixel = 0
 languageMenu.Visible = false
-languageMenu.ZIndex = 20
+languageMenu.ZIndex = 32
+languageMenu.Active = true
 languageMenu.Parent = languageRow
 corner(languageMenu, 9)
 stroke(languageMenu, Color3.fromRGB(180, 170, 255), 1)
@@ -751,7 +756,7 @@ for _, language in ipairs({ "Русский", "English", "Deutsch", "Français",
 	option.TextSize = 11
 	option.TextColor3 = TEXT
 	option.Text = language
-	option.ZIndex = 21
+	option.ZIndex = 33
 	option.Parent = languageMenu
 	corner(option, 6)
 	option.MouseButton1Click:Connect(function()
