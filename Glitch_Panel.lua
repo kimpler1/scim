@@ -4,7 +4,7 @@
   VER: V78
 ]]
 
-local GLITCH_UI_VER = "V92"
+local GLITCH_UI_VER = "V93"
 local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v91"
 
 local Players = game:GetService("Players")
@@ -338,7 +338,9 @@ end
 local function makePage(name)
 	local f = Instance.new("ScrollingFrame")
 	f.Name = name
-	f.Size = UDim2.new(1, 0, 1, 0)
+	-- Keep the scrollbar inside the rounded content edge at every scroll point.
+	f.Size = UDim2.new(1, -10, 1, -16)
+	f.Position = UDim2.fromOffset(0, 8)
 	f.BackgroundTransparency = 1
 	f.BorderSizePixel = 0
 	f.ScrollBarThickness = 3
@@ -346,7 +348,7 @@ local function makePage(name)
 	f.CanvasSize = UDim2.fromOffset(0, 420)
 	f.Visible = false
 	f.Parent = content
-	pad(f, 16, 14, 16, 14)
+	pad(f, 16, 14, 12, 14)
 	local list = Instance.new("UIListLayout")
 	-- One clear, consistent gap between every row on every page.
 	list.Padding = UDim.new(0, 10)
@@ -385,7 +387,7 @@ local function navItem(text, pageName, isHeader)
 	b.Size = UDim2.new(1, 0, 0, 34)
 	b.BackgroundColor3 = ROW
 	b.BackgroundTransparency = 1
-	b.Text = "  " .. text
+	b.Text = ""
 	b.Font = Enum.Font.GothamBold
 	b.TextSize = 13
 	b.TextColor3 = TEXT
@@ -394,6 +396,16 @@ local function navItem(text, pageName, isHeader)
 	b.AutoButtonColor = false
 	b.Parent = sideScroll
 	corner(b, 8)
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Position = UDim2.fromOffset(17, 0)
+	label.Size = UDim2.new(1, -23, 1, 0)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 13
+	label.TextColor3 = TEXT
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Text = text
+	label.Parent = b
 	local bar = Instance.new("Frame")
 	bar.Size = UDim2.new(0, 3, 0, 16)
 	bar.Position = UDim2.new(0, 4, 0.5, -8)
@@ -428,6 +440,24 @@ local function glassRow(parent, height)
 	corner(r, 12)
 	stroke(r, Color3.fromRGB(200, 190, 255), 1)
 	return r
+end
+
+-- Visually groups controls that configure the same feature while preserving
+-- the page's normal vertical layout.
+local function controlGroup(parent, height)
+	local group = Instance.new("Frame")
+	group.Size = UDim2.new(1, 0, 0, height)
+	group.BackgroundColor3 = Color3.fromRGB(46, 40, 76)
+	group.BackgroundTransparency = 0.6
+	group.BorderSizePixel = 0
+	group.Parent = parent
+	corner(group, 14)
+	stroke(group, Color3.fromRGB(150, 140, 225), 1)
+	pad(group, 8, 8, 8, 8)
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, 7)
+	layout.Parent = group
+	return group
 end
 
 local function makeToggle(parent, labelText, default, callback)
@@ -620,7 +650,8 @@ navItem("ESP", "ESP")
 navItem("Player", "Player")
 navItem("Auto", "Auto")
 
-local zoneRow = glassRow(mainPage, 34)
+local eggTargetGroup = controlGroup(mainPage, 132)
+local zoneRow = glassRow(eggTargetGroup, 34)
 biomeLbl = Instance.new("TextLabel")
 biomeLbl.BackgroundTransparency = 1
 biomeLbl.Position = UDim2.fromOffset(40, 0)
@@ -657,7 +688,7 @@ nextB.Parent = zoneRow
 corner(nextB, 8)
 
 local allEggsToggle, bestEggToggle, droppedEggsToggle, carrierToggle
-allEggsToggle = makeToggle(mainPage, "Steal All Eggs", false, function(on)
+allEggsToggle = makeToggle(eggTargetGroup, "Steal All Eggs", false, function(on)
 	if not loadCore() then
 		allEggsToggle.set(false)
 		return
@@ -678,7 +709,7 @@ allEggsToggle = makeToggle(mainPage, "Steal All Eggs", false, function(on)
 	end
 end)
 
-bestEggToggle = makeToggle(mainPage, "Steal Best Egg", false, function(on)
+bestEggToggle = makeToggle(eggTargetGroup, "Steal Best Egg", false, function(on)
 	if not loadCore() then
 		bestEggToggle.set(false)
 		return
@@ -765,14 +796,15 @@ makeToggle(espPage, "ESP Eggs", false, function(on)
 end)
 -- PLAYER
 local walkToggle
-walkToggle = makeToggle(playerPage, "Speed", false, function(on)
+local speedGroup = controlGroup(playerPage, 106)
+walkToggle = makeToggle(speedGroup, "Speed", false, function(on)
 	if not loadCore() then
 		walkToggle.set(false)
 		return
 	end
 	if coreApi.setWalkSpeed then coreApi.setWalkSpeed(on, walkSpeedVal) end
 end)
-makeSlider(playerPage, "Walk Speed", 16, 500, walkSpeedVal, function(v)
+makeSlider(speedGroup, "Walk Speed", 16, 500, walkSpeedVal, function(v)
 	walkSpeedVal = v
 	-- dragging slider implies you want it on (Boblo-style always apply while enabled)
 	if not walkToggle.get() then
@@ -783,14 +815,15 @@ makeSlider(playerPage, "Walk Speed", 16, 500, walkSpeedVal, function(v)
 end)
 
 local flyToggle
-flyToggle = makeToggle(playerPage, "Fly (WASD + Space/Ctrl)", false, function(on)
+local flyGroup = controlGroup(playerPage, 106)
+flyToggle = makeToggle(flyGroup, "Fly", false, function(on)
 	if not loadCore() then
 		flyToggle.set(false)
 		return
 	end
 	if coreApi.setFly then coreApi.setFly(on, flySpeedVal) end
 end)
-makeSlider(playerPage, "Fly Speed", 20, 500, flySpeedVal, function(v)
+makeSlider(flyGroup, "Fly Speed", 20, 500, flySpeedVal, function(v)
 	flySpeedVal = v
 	if flyToggle.get() and coreApi and coreApi.setFly then
 		coreApi.setFly(true, flySpeedVal)
