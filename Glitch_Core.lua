@@ -2,7 +2,7 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V112
+  VER: V113
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
@@ -10,7 +10,7 @@
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
 ]]
 
-local GLITCH_CORE_VER = "V112"
+local GLITCH_CORE_VER = "V113"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -61,7 +61,7 @@ local CFG = {
 }
 
 local EggState, PlotState, SlotIdentity, AssetsData, SaveModule
-local IsEggReadyFn, BeginHatchFn, FinishHatchFn, WearEggToolFn, PlantEggFn
+local IsEggReadyFn, BeginHatchFn, FinishHatchFn, WearEggToolFn, PlantEggFn, ReadOwnedEggsFn
 local EquipBestPetsRemote, BatSwingRemote
 local CarryFn, SnapshotFn, SyncSnapshot, CarrySignal
 local GetRespawn, GetPlot, InPlot, IsFirstUid, BuildSlotKey
@@ -179,6 +179,7 @@ local function bindGame()
 	FinishHatchFn = pick(EggState, "FinishHatch", "RequestCompleteHatchEgg")
 	WearEggToolFn = pick(EggState, "WearEggTool", "RequestEquipTool")
 	PlantEggFn = pick(EggState, "PlantEgg", "RequestPlaceEgg")
+	ReadOwnedEggsFn = pick(EggState, "ReadOwnedEggs", "GetOwnedEggs", "ReadLocalEggs")
 	EquipBestPetsRemote = findRemoteByPathOrName("Haul/WearBest", "WearBest")
 		or findRemoteByPathOrName("PenRoster/ConfirmEquipBestBadge", "ConfirmEquipBestBadge")
 	BatSwingRemote = findRemoteByPathOrName("BatSwing/Trigger", "BatSwing")
@@ -1453,6 +1454,42 @@ local function plantCarriedEggs()
 	return planted
 end
 
+local nextPlacementIndex = 1
+
+-- The save module may lag behind a plant/hatch event. Prefer the live owned-egg
+-- snapshot when the client exposes one, but retain Save.EggInventory as a fallback.
+local function ownedEggRecords()
+	local byUid = {}
+	local function addAll(source)
+		if typeof(source) ~= "table" then return end
+		local records = source.Records or source.EggInventory or source
+		if typeof(records) ~= "table" then return end
+		for key, egg in pairs(records) do
+			if typeof(egg) == "table" then
+				local uid = typeof(key) == "string" and key or egg.Uid
+				if typeof(uid) == "string" then byUid[uid] = egg end
+			end
+		end
+	end
+
+	local save = getSave()
+	addAll(save and save.EggInventory)
+	if ReadOwnedEggsFn then
+		local ok, snapshot = pcall(ReadOwnedEggsFn, LP.UserId)
+		if not ok or typeof(snapshot) ~= "table" then
+			ok, snapshot = pcall(ReadOwnedEggsFn)
+		end
+		if ok then addAll(snapshot) end
+	end
+
+	local result = {}
+	for uid, egg in pairs(byUid) do
+		table.insert(result, { uid = uid, egg = egg })
+	end
+	table.sort(result, function(a, b) return a.uid < b.uid end)
+	return result
+end
+
 local function plotPlacementCFrames()
 	if not GetPlot then return {} end
 	local ok, plot = pcall(GetPlot)
@@ -1469,23 +1506,35 @@ local function plotPlacementCFrames()
 end
 
 local function autoPlantOwnedEggs()
-	if not PlantEggFn or not WearEggToolFn or not isInPlot() or isActuallyCarrying() then return 0 end
-	local save = getSave()
-	local inventory = save and save.EggInventory
-	if typeof(inventory) ~= "table" then return 0 end
+	if not PlantEggFn or isActuallyCarrying() then return 0 end
+	if not isInPlot() then
+		setStatus("Auto plant: stand in base")
+		return 0
+	end
 	local positions = plotPlacementCFrames()
 	if #positions == 0 then return 0 end
-	local planted, index = 0, 1
-	for uid, egg in pairs(inventory) do
+	local planted = 0
+	for _, entry in ipairs(ownedEggRecords()) do
+		if not autoActions.plant or isActuallyCarrying() then break end
+		local uid, egg = entry.uid, entry.egg
 		if typeof(uid) == "string" and typeof(egg) == "table" and egg.Placement == nil and not egg.Locked then
-			pcall(WearEggToolFn, uid)
+			if WearEggToolFn then pcall(WearEggToolFn, uid) end
 			task.wait(0.12)
-			local ok, result = pcall(PlantEggFn, uid, positions[index])
-			if ok and result == true then
-				planted += 1
-				index = index % #positions + 1
-				task.wait(0.22)
+			local placedThisEgg = false
+			-- A failed position usually means that slot is occupied. Try every
+			-- placement before treating the plot as full.
+			for offset = 0, #positions - 1 do
+				local index = (nextPlacementIndex + offset - 1) % #positions + 1
+				local ok, result = pcall(PlantEggFn, uid, positions[index])
+				if ok and result ~= false then
+					placedThisEgg = true
+					nextPlacementIndex = index % #positions + 1
+					planted += 1
+					task.wait(0.22)
+					break
+				end
 			end
+			if not placedThisEgg then setStatus("Auto plant: plot full") end
 		end
 	end
 	return planted
@@ -1493,20 +1542,20 @@ end
 
 local function autoHatchReadyEggs()
 	if not IsEggReadyFn or not BeginHatchFn or not FinishHatchFn or isActuallyCarrying() then return 0 end
-	local save = getSave()
-	local inventory = save and save.EggInventory
-	if typeof(inventory) ~= "table" then return 0 end
 	local count = 0
-	for uid, egg in pairs(inventory) do
+	for _, entry in ipairs(ownedEggRecords()) do
+		if not autoActions.hatch or isActuallyCarrying() then break end
+		local uid, egg = entry.uid, entry.egg
 		if typeof(uid) == "string" and typeof(egg) == "table" and egg.Placement ~= nil then
 			local ready = false
-			pcall(function() ready = IsEggReadyFn(uid) == true end)
-			if not ready then pcall(function() ready = IsEggReadyFn(egg) == true end) end
+			pcall(function() ready = IsEggReadyFn(egg) == true end)
+			if not ready then pcall(function() ready = IsEggReadyFn(uid) == true end) end
 			if ready then
-				local started = false
-				pcall(function() started = BeginHatchFn(uid) == true end)
-				if started then
-					task.wait(0.08)
+				-- Some game builds acknowledge BeginHatch with nil instead of true;
+				-- only an explicit false is a rejection, so still send completion.
+				local ok, result = pcall(BeginHatchFn, uid)
+				if ok and result ~= false then
+					task.wait(0.10)
 					pcall(FinishHatchFn, uid)
 					count += 1
 					task.wait(0.3)
@@ -3060,8 +3109,8 @@ end
 function Api.setAutoAction(name, on)
 	if autoActions[name] == nil then return false end
 	bindGame()
-	if on and name == "plant" and (not PlantEggFn or not WearEggToolFn or not SaveModule) then setStatus("Auto plant unavailable"); return false end
-	if on and name == "hatch" and (not IsEggReadyFn or not BeginHatchFn or not FinishHatchFn or not SaveModule) then setStatus("Auto hatch unavailable"); return false end
+	if on and name == "plant" and not PlantEggFn then setStatus("Auto plant unavailable"); return false end
+	if on and name == "hatch" and (not IsEggReadyFn or not BeginHatchFn or not FinishHatchFn) then setStatus("Auto hatch unavailable"); return false end
 	if on and name == "equip" and not EquipBestPetsRemote then setStatus("Auto equip unavailable"); return false end
 	autoActions[name] = on and true or false
 	if on then
