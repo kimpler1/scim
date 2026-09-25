@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V95
+  VER: V92
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V95"
+local GLITCH_CORE_VER = "V92"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -389,10 +389,9 @@ local function swapStealHumanoid()
 	end
 
 	hum.Archivable = true
-	-- The game can alter jump settings while the guard route is active.  Keep
-	-- the original values before the replacement Humanoid is installed, so
-	-- manual jumping is restored exactly when Auto Farm stops.
-	CFG.farmJumpBaseline = {
+	-- Snapshot only the player-facing jump settings.  The farm route below is
+	-- otherwise identical to the V102 reference implementation.
+	CFG.jumpRestore = {
 		useJumpPower = hum.UseJumpPower,
 		jumpPower = hum.JumpPower,
 		jumpHeight = hum.JumpHeight,
@@ -404,14 +403,7 @@ local function swapStealHumanoid()
 	clone.Sit = false
 	clone.PlatformStand = false
 	clone.AutoRotate = true
-	-- Keep the real Humanoid alive while the farm uses its guarded clone.  The
-	-- default Roblox controls retain their reference to this instance, and it
-	-- is reattached as soon as Auto Farm is switched off.
-	if CFG.preFarmHumanoid and CFG.preFarmHumanoid.Parent == nil then
-		pcall(function() CFG.preFarmHumanoid:Destroy() end)
-	end
-	CFG.preFarmHumanoid = hum
-	hum.Parent = nil
+	hum:Destroy()
 	clone.Parent = char
 	local hrp = char:FindFirstChild("HumanoidRootPart")
 	if hrp then
@@ -430,26 +422,27 @@ end
 local function restoreManualRunAnimation()
 	local char = getChar()
 	local hum = getHum()
-	if char and CFG.preFarmHumanoid and CFG.preFarmHumanoid.Parent == nil then
-		if hum and hum ~= CFG.preFarmHumanoid then
-			pcall(function() hum:Destroy() end)
-		end
-		CFG.preFarmHumanoid.Parent = char
-		hum = CFG.preFarmHumanoid
-		CFG.preFarmHumanoid = nil
-	end
 	if not (char and hum) then return end
 	hum.Sit = false
 	hum.PlatformStand = false
 	hum.AutoRotate = true
-	if CFG.farmJumpBaseline then
-		pcall(function() hum.UseJumpPower = CFG.farmJumpBaseline.useJumpPower end)
-		pcall(function() hum.JumpPower = CFG.farmJumpBaseline.jumpPower end)
-		pcall(function() hum.JumpHeight = CFG.farmJumpBaseline.jumpHeight end)
-		pcall(function() hum.AutoJumpEnabled = CFG.farmJumpBaseline.autoJumpEnabled end)
+	if CFG.jumpRestore then
+		pcall(function() hum.UseJumpPower = CFG.jumpRestore.useJumpPower end)
+		pcall(function() hum.JumpPower = CFG.jumpRestore.jumpPower end)
+		pcall(function() hum.JumpHeight = CFG.jumpRestore.jumpHeight end)
+		pcall(function() hum.AutoJumpEnabled = CFG.jumpRestore.autoJumpEnabled end)
 	end
 	pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Jumping, true) end)
-	pcall(function() hum.Jump = false end)
+	if not CFG.jumpRestoreConn then
+		CFG.jumpRestoreConn = UserInputService.JumpRequest:Connect(function()
+			if autoFarm or flyOn then return end
+			local activeHum = getHum()
+			if not activeHum or activeHum.Health <= 0 or activeHum.PlatformStand then return end
+			pcall(function() activeHum.Jump = true end)
+			pcall(function() activeHum:ChangeState(Enum.HumanoidStateType.Jumping) end)
+		end)
+		table.insert(connections, CFG.jumpRestoreConn)
+	end
 	pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
 	pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
 	local animate = char:FindFirstChild("Animate")
@@ -3134,7 +3127,6 @@ end
 
 function Api.destroy()
 	autoFarm = false
-	restoreManualRunAnimation()
 	stopAuraFollowMotion()
 	stopFly()
 	setInfiniteJump(false)
