@@ -4,7 +4,7 @@
   VER: V78
 ]]
 
-local GLITCH_UI_VER = "V100"
+local GLITCH_UI_VER = "V101"
 local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v91"
 
 local Players = game:GetService("Players")
@@ -528,8 +528,8 @@ local function controlGroup(parent, height)
 	group.Size = UDim2.new(1, 0, 0, height)
 	group.BackgroundColor3 = Color3.fromRGB(46, 40, 76)
 	group:SetAttribute("ThemeGroup", true)
-	-- Keep groups subtly lighter than the functions they contain.
-	group.BackgroundTransparency = 0.8
+	-- Group containers are outline-only; the page background shows through.
+	group.BackgroundTransparency = 1
 	group.BorderSizePixel = 0
 	group.Parent = parent
 	corner(group, 14)
@@ -823,7 +823,8 @@ languageLabel.Parent = languageRow
 local languageSelect = Instance.new("TextButton")
 languageSelect.Size = UDim2.fromOffset(156, 24)
 languageSelect.Position = UDim2.new(1, -166, 0.5, -12)
-languageSelect.BackgroundColor3 = ACCENT_SOFT
+languageSelect.BackgroundColor3 = Color3.fromRGB(30, 28, 48)
+languageSelect.BackgroundTransparency = 0.22
 languageSelect.BorderSizePixel = 0
 languageSelect.Font = Enum.Font.GothamBold
 languageSelect.TextSize = 11
@@ -831,7 +832,6 @@ languageSelect.TextColor3 = TEXT
 languageSelect.Text = "English"
 languageSelect.ZIndex = 31
 languageSelect.Parent = languageRow
-languageSelect:SetAttribute("ThemeAction", true)
 corner(languageSelect, 7)
 
 local languageMenu = Instance.new("Frame")
