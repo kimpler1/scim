@@ -2,15 +2,15 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V111
+  VER: V112
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     - Auto Steal: repeat pickup returns to base on a stable route (no upward drift)
-    - Manual jump is restored only after Auto Farm is stopped
+    - Original Humanoid is restored after Auto Farm for normal controls and jumping
 ]]
 
-local GLITCH_CORE_VER = "V111"
+local GLITCH_CORE_VER = "V112"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -396,7 +396,14 @@ local function swapStealHumanoid()
 	clone.Sit = false
 	clone.PlatformStand = false
 	clone.AutoRotate = true
-	hum:Destroy()
+	-- Preserve Roblox's original control target while the farm runs on the
+	-- guarded clone.  Destroying it permanently breaks normal jump input on
+	-- some clients; it is reattached only from stopFarm, never mid-route.
+	if CFG.preFarmHumanoid and CFG.preFarmHumanoid.Parent == nil then
+		pcall(function() CFG.preFarmHumanoid:Destroy() end)
+	end
+	CFG.preFarmHumanoid = hum
+	hum.Parent = nil
 	clone.Parent = char
 	local hrp = char:FindFirstChild("HumanoidRootPart")
 	if hrp then
@@ -415,28 +422,21 @@ end
 local function restoreManualRunAnimation()
 	local char = getChar()
 	local hum = getHum()
+	if char and CFG.preFarmHumanoid and CFG.preFarmHumanoid.Parent == nil then
+		if hum and hum ~= CFG.preFarmHumanoid then
+			pcall(function() hum:Destroy() end)
+		end
+		CFG.preFarmHumanoid.Parent = char
+		hum = CFG.preFarmHumanoid
+		CFG.preFarmHumanoid = nil
+	end
 	if not (char and hum) then return end
 	hum.Sit = false
 	hum.PlatformStand = false
 	hum.AutoRotate = true
 	pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
 	pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
-	-- Auto Farm replaces the Humanoid during its guarded route.  Roblox can
-	-- leave its normal JumpRequest bound to the removed Humanoid afterwards.
-	-- This fallback is installed only after Auto Farm stops and never runs
-	-- while farming or flying, so it cannot affect the egg route.
 	pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Jumping, true) end)
-	if not CFG.jumpRestoreConn then
-		CFG.jumpRestoreConn = UserInputService.JumpRequest:Connect(function()
-			if autoFarm or flyOn then return end
-			local activeHum = getHum()
-			if not activeHum or activeHum.Health <= 0 or activeHum.PlatformStand or activeHum.Sit then return end
-			if activeHum.FloorMaterial == Enum.Material.Air then return end
-			pcall(function() activeHum.Jump = true end)
-			pcall(function() activeHum:ChangeState(Enum.HumanoidStateType.Jumping) end)
-		end)
-		table.insert(connections, CFG.jumpRestoreConn)
-	end
 	local animate = char:FindFirstChild("Animate")
 	if animate and animate:IsA("LocalScript") then
 		pcall(function() animate.Disabled = true end)
@@ -3125,6 +3125,7 @@ function Api.destroy()
 	autoFarm = false
 	stopAuraFollowMotion()
 	stopFly()
+	restoreManualRunAnimation()
 	setInfiniteJump(false)
 	setNoClip(false)
 	walkSpeedOn = false
