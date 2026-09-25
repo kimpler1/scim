@@ -2,7 +2,7 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V116
+  VER: V117
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
@@ -10,7 +10,7 @@
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
 ]]
 
-local GLITCH_CORE_VER = "V116"
+local GLITCH_CORE_VER = "V117"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -68,7 +68,7 @@ local GetRespawn, GetPlot, InPlot, IsFirstUid, BuildSlotKey
 local AreasFolder, GuardAreas, AreaEggs
 local Bound = false
 local autoFarm, carrying, farmBusy = false, false, false
-local autoActions = { plant = false, hatch = false, equip = false }
+local autoActions = { plant = false, hatch = false, deploy = false, collect = false }
 local autoActionsBusy = false
 local connections = {}
 local espFlags = { players = false, eggs = false, beasts = false }
@@ -144,7 +144,11 @@ CFG.findEggWorldRemote = function(...)
 end
 
 local function invokeRemote(remote, ...)
-	if not remote then return false end
+	if not remote then
+		CFG.lastRemoteError = "remote unavailable"
+		CFG.lastRemoteResult = nil
+		return false
+	end
 	local args = table.pack(...)
 	local ok, result = pcall(function()
 		if remote:IsA("RemoteFunction") then
@@ -153,7 +157,15 @@ local function invokeRemote(remote, ...)
 		remote:FireServer(table.unpack(args, 1, args.n))
 		return true
 	end)
+	CFG.lastRemoteError = ok and nil or tostring(result)
+	CFG.lastRemoteResult = ok and result or nil
 	return ok and result ~= false
+end
+
+CFG.describeRemote = function(remote)
+	if not remote then return "not found" end
+	local ok, fullName = pcall(function() return remote:GetFullName() end)
+	return (ok and tostring(fullName) or tostring(remote.Name)) .. " [" .. remote.ClassName .. "]"
 end
 
 local function getSave()
@@ -214,6 +226,7 @@ local function bindGame()
 
 	EquipBestPetsRemote = findRemoteByPathOrName("RF/Haul/WearBest", "WearBest")
 		or findRemoteByPathOrName("RF/PenRoster/ConfirmEquipBestBadge", "ConfirmEquipBestBadge")
+	CFG.collectPetEarningsRemote = findRemoteByPathOrName("RF/AwayEarnings/AskCollect", "AwayEarnings/AskCollect")
 	BatSwingRemote = findRemoteByPathOrName("BatSwing/Trigger", "BatSwing")
 
 	-- Oxide: Packages.Networking["RF/EggWorld/AskFieldEggCarry"]
@@ -279,6 +292,7 @@ local function bindGame()
 	end
 
 	Bound = EggState ~= nil or PlantEggFn ~= nil or BeginHatchFn ~= nil or EquipBestPetsRemote ~= nil
+		or CFG.collectPetEarningsRemote ~= nil
 	return Bound
 end
 
@@ -1637,11 +1651,37 @@ local function autoHatchReadyEggs()
 	return count
 end
 
+-- These endpoints are confirmed separately from egg handling. "WearBest"
+-- places/equips the server's best available pets; "AskCollect" claims only
+-- their accumulated earnings. Neither endpoint sells or deletes a pet.
+CFG.runPetAction = function(action)
+	local remote = action == "deploy" and EquipBestPetsRemote or CFG.collectPetEarningsRemote
+	local title = action == "deploy" and "Deploy best pets" or "Collect pet earnings"
+	if not remote then
+		setStatus(title .. ": game API not found")
+		return false
+	end
+	local ok
+	if action == "collect" then
+		ok = invokeRemote(remote, { Kind = "Claim" })
+	else
+		ok = invokeRemote(remote)
+	end
+	local via = CFG.describeRemote(remote)
+	if ok then
+		setStatus(title .. (action == "collect" and " (Claim): sent via " or ": sent via ") .. via)
+	else
+		local detail = CFG.lastRemoteError or CFG.lastRemoteResult or "server rejected request"
+		setStatus(title .. ": failed via " .. via .. " — " .. tostring(detail))
+	end
+	return ok
+end
+
 local function runAutoActions()
 	if autoActionsBusy then return end
 	autoActionsBusy = true
 	task.spawn(function()
-		while autoActions.plant or autoActions.hatch or autoActions.equip do
+		while autoActions.plant or autoActions.hatch or autoActions.deploy or autoActions.collect do
 			bindGame()
 			if autoActions.plant then
 				local n = autoPlantOwnedEggs()
@@ -1651,7 +1691,14 @@ local function runAutoActions()
 				local n = autoHatchReadyEggs()
 				if n > 0 then setStatus("Auto hatched " .. tostring(n)) end
 			end
-			if autoActions.equip and EquipBestPetsRemote then invokeRemote(EquipBestPetsRemote) end
+			if autoActions.deploy and tick() - (CFG.lastPetDeployAt or 0) >= 5 then
+				CFG.lastPetDeployAt = tick()
+				CFG.runPetAction("deploy")
+			end
+			if autoActions.collect and tick() - (CFG.lastPetCollectAt or 0) >= 5 then
+				CFG.lastPetCollectAt = tick()
+				CFG.runPetAction("collect")
+			end
 			task.wait(3.0)
 		end
 		autoActionsBusy = false
@@ -3184,7 +3231,8 @@ function Api.setAutoAction(name, on)
 	if on then
 		local waiting = (name == "plant" and not PlantEggFn)
 			or (name == "hatch" and (not IsEggReadyFn or not BeginHatchFn or not FinishHatchFn))
-			or (name == "equip" and not EquipBestPetsRemote)
+			or (name == "deploy" and not EquipBestPetsRemote)
+			or (name == "collect" and not CFG.collectPetEarningsRemote)
 		setStatus(waiting and ("Auto " .. name .. " waiting for game API") or ("Auto " .. name .. " on"))
 		runAutoActions()
 	else

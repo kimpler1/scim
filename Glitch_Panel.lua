@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V116
+  VER: V117
 ]]
 
-local GLITCH_UI_VER = "V116"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v116"
+local GLITCH_UI_VER = "V117"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v117"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -80,7 +80,8 @@ local LOCALES = {
 		Speed = "Скорость", ["Walk Speed"] = "Скорость ходьбы", Fly = "Полёт", ["Fly Speed"] = "Скорость полёта",
 		["Infinite Jump"] = "Бесконечный прыжок", ["No Clip"] = "Без столкновений",
 		["Auto Plant All Eggs"] = "Авто посадка всех яиц", ["Auto Hatch Eggs"] = "Авто вылупление яиц",
-		["Auto Equip Best Pets"] = "Авто выбор лучших питомцев", ["Link copied"] = "Ссылка скопирована",
+		["Auto Deploy Best Pets"] = "Авторазмещение лучших питомцев", ["Auto Collect Pet Earnings"] = "Автосбор дохода питомцев",
+		["Link copied"] = "Ссылка скопирована",
 		["Link unavailable"] = "Ссылка недоступна",
 	},
 	de = {
@@ -1189,8 +1190,8 @@ noClipToggle = makeToggle(playerPage, "No Clip", false, function(on)
 end)
 
 -- AUTO
-local autoRequested = { plant = false, hatch = false, equip = false }
-local autoRequestRunning = { plant = false, hatch = false, equip = false }
+local autoRequested = { plant = false, hatch = false, deploy = false, collect = false }
+local autoRequestRunning = { plant = false, hatch = false, deploy = false, collect = false }
 
 local function applyAutoRequest(action)
 	if autoRequestRunning[action] then return end
@@ -1198,6 +1199,7 @@ local function applyAutoRequest(action)
 	task.spawn(function()
 		while autoRequested[action] do
 			if loadCore() and coreApi and coreApi.setAutoAction then
+				pushConfig()
 				local ran, accepted = pcall(coreApi.setAutoAction, action, true)
 				if ran and accepted then
 					setStatus("Auto " .. action .. " on")
@@ -1227,7 +1229,8 @@ end
 
 autoActionToggle("Auto Plant All Eggs", "plant")
 autoActionToggle("Auto Hatch Eggs", "hatch")
-autoActionToggle("Auto Equip Best Pets", "equip")
+autoActionToggle("Auto Deploy Best Pets", "deploy")
+autoActionToggle("Auto Collect Pet Earnings", "collect")
 
 -- default page
 generalPage.Visible = true
