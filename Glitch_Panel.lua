@@ -4,8 +4,8 @@
   VER: V78
 ]]
 
-local GLITCH_UI_VER = "V117"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v117"
+local GLITCH_UI_VER = "V118"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v118"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -101,9 +101,9 @@ local LOCALES = {
 		["Bat Aura"] = "Аура биты", ["ESP Players"] = "ESP игроков", ["ESP Eggs"] = "ESP яиц",
 		Speed = "Скорость", ["Walk Speed"] = "Скорость ходьбы", Fly = "Полёт", ["Fly Speed"] = "Скорость полёта",
 		["Infinite Jump"] = "Бесконечный прыжок", ["No Clip"] = "Без столкновений",
-		["Auto Plant All Eggs"] = "Авто посадка всех яиц", ["Auto Hatch Eggs"] = "Авто вылупление яиц",
-		["Auto Equip Best Pets"] = "Авто выбор лучших питомцев", ["Auto Claim Rewards"] = "Авто сбор наград",
-		["Auto Claim Monster Chests"] = "Авто сбор сундуков монстров", ["Link copied"] = "Ссылка скопирована",
+		["Auto Plant All Eggs"] = "Авто посадка всех яиц", ["Auto Hatch All Eggs"] = "Авто вылупление всех яиц",
+		["Auto Equip Best Pets"] = "Авто выбор лучших питомцев", ["Auto Claim Monster Chests"] = "Авто сбор сундуков монстров",
+		["Link copied"] = "Ссылка скопирована",
 		["Link unavailable"] = "Ссылка недоступна",
 	},
 	de = {
@@ -113,9 +113,9 @@ local LOCALES = {
 		["Bat Aura"] = "Schläger-Aura", ["ESP Players"] = "ESP Spieler", ["ESP Eggs"] = "ESP Eier",
 		Speed = "Tempo", ["Walk Speed"] = "Lauftempo", Fly = "Fliegen", ["Fly Speed"] = "Flugtempo",
 		["Infinite Jump"] = "Unendlicher Sprung", ["No Clip"] = "Keine Kollision",
-		["Auto Plant All Eggs"] = "Alle Eier automatisch pflanzen", ["Auto Hatch Eggs"] = "Eier automatisch ausbrüten",
-		["Auto Equip Best Pets"] = "Beste Haustiere automatisch wählen", ["Auto Claim Rewards"] = "Belohnungen automatisch abholen",
-		["Auto Claim Monster Chests"] = "Monstertruhen automatisch abholen", ["Link copied"] = "Link kopiert",
+		["Auto Plant All Eggs"] = "Alle Eier automatisch pflanzen", ["Auto Hatch All Eggs"] = "Alle Eier automatisch ausbrüten",
+		["Auto Equip Best Pets"] = "Beste Haustiere automatisch wählen", ["Auto Claim Monster Chests"] = "Monstertruhen automatisch abholen",
+		["Link copied"] = "Link kopiert",
 		["Link unavailable"] = "Link nicht verfügbar",
 	},
 	fr = {
@@ -125,9 +125,9 @@ local LOCALES = {
 		["Bat Aura"] = "Aura de batte", ["ESP Players"] = "ESP joueurs", ["ESP Eggs"] = "ESP œufs",
 		Speed = "Vitesse", ["Walk Speed"] = "Vitesse de marche", Fly = "Vol", ["Fly Speed"] = "Vitesse de vol",
 		["Infinite Jump"] = "Saut infini", ["No Clip"] = "Sans collision",
-		["Auto Plant All Eggs"] = "Planter tous les œufs auto", ["Auto Hatch Eggs"] = "Faire éclore les œufs auto",
-		["Auto Equip Best Pets"] = "Équiper les meilleurs animaux auto", ["Auto Claim Rewards"] = "Réclamer les récompenses auto",
-		["Auto Claim Monster Chests"] = "Réclamer les coffres monstres auto", ["Link copied"] = "Lien copié",
+		["Auto Plant All Eggs"] = "Planter tous les œufs auto", ["Auto Hatch All Eggs"] = "Faire éclore tous les œufs auto",
+		["Auto Equip Best Pets"] = "Équiper les meilleurs animaux auto", ["Auto Claim Monster Chests"] = "Réclamer les coffres monstres auto",
+		["Link copied"] = "Lien copié",
 		["Link unavailable"] = "Lien indisponible",
 	},
 	es = {
@@ -137,9 +137,9 @@ local LOCALES = {
 		["Bat Aura"] = "Aura de bate", ["ESP Players"] = "ESP jugadores", ["ESP Eggs"] = "ESP huevos",
 		Speed = "Velocidad", ["Walk Speed"] = "Velocidad al caminar", Fly = "Volar", ["Fly Speed"] = "Velocidad de vuelo",
 		["Infinite Jump"] = "Salto infinito", ["No Clip"] = "Sin colisión",
-		["Auto Plant All Eggs"] = "Plantar todos los huevos auto", ["Auto Hatch Eggs"] = "Incubar huevos auto",
-		["Auto Equip Best Pets"] = "Equipar mejores mascotas auto", ["Auto Claim Rewards"] = "Reclamar recompensas auto",
-		["Auto Claim Monster Chests"] = "Reclamar cofres monstruo auto", ["Link copied"] = "Enlace copiado",
+		["Auto Plant All Eggs"] = "Plantar todos los huevos auto", ["Auto Hatch All Eggs"] = "Incubar todos los huevos auto",
+		["Auto Equip Best Pets"] = "Equipar mejores mascotas auto", ["Auto Claim Monster Chests"] = "Reclamar cofres monstruo auto",
+		["Link copied"] = "Enlace copiado",
 		["Link unavailable"] = "Enlace no disponible",
 	},
 }
@@ -1186,9 +1186,8 @@ local function autoActionToggle(label, action)
 end
 
 autoActionToggle("Auto Plant All Eggs", "plant")
-autoActionToggle("Auto Hatch Eggs", "hatch")
+autoActionToggle("Auto Hatch All Eggs", "hatch")
 autoActionToggle("Auto Equip Best Pets", "equip")
-autoActionToggle("Auto Claim Rewards", "rewards")
 autoActionToggle("Auto Claim Monster Chests", "chests")
 
 -- default page
