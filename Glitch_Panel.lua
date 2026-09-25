@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V114
+  VER: V115
 ]]
 
-local GLITCH_UI_VER = "V114"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v114"
+local GLITCH_UI_VER = "V115"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v115"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -165,6 +165,27 @@ local function mountGui(gui)
 	return ok, ok and "CoreGui" or "FAIL"
 end
 
+-- The panel used random names in earlier releases, so re-executing a loader
+-- left old windows (and their old callbacks) on-screen. Keep exactly one
+-- Glitch panel so a click always reaches the code that was just loaded.
+local function clearPreviousPanels()
+	local parents, seen = {}, {}
+	local hidden = resolveHiddenParent()
+	if hidden then table.insert(parents, hidden) end
+	local ok, coreGui = pcall(function() return game:GetService("CoreGui") end)
+	if ok and coreGui then table.insert(parents, coreGui) end
+	for _, parent in ipairs(parents) do
+		if not seen[parent] then
+			seen[parent] = true
+			for _, child in ipairs(parent:GetChildren()) do
+				if child:IsA("ScreenGui") and child.Name:sub(1, 7) == "Glitch_" then
+					pcall(function() child:Destroy() end)
+				end
+			end
+		end
+	end
+end
+
 local function setStatus(t)
 	local text = tostring(t)
 	table.insert(debugLines, text)
@@ -199,8 +220,13 @@ local function loadCore()
 		return false
 	end
 	coreApi = api
-	coreLoaded = true
 	local cv = (coreApi.getVersion and coreApi.getVersion()) or "?"
+	if tostring(cv) ~= GLITCH_UI_VER then
+		coreApi = nil
+		setStatus(("Core mismatch: UI %s / Core %s"):format(GLITCH_UI_VER, tostring(cv)))
+		return false
+	end
+	coreLoaded = true
 	setStatus(("Core OK  UI %s  Core %s"):format(GLITCH_UI_VER, tostring(cv)))
 	return true
 end
@@ -245,8 +271,9 @@ local function pad(p, l, t, r, b)
 end
 
 -- Screen
+clearPreviousPanels()
 local gui = Instance.new("ScreenGui")
-gui.Name = "Glitch_" .. tostring(math.random(10000, 99999))
+gui.Name = "Glitch_UI"
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.DisplayOrder = 999
@@ -826,6 +853,20 @@ local espPage = makePage("ESP")
 local playerPage = makePage("Player")
 local autoPage = makePage("Auto")
 
+local autoStatusRow = glassRow(autoPage, 54)
+statusLbl = Instance.new("TextLabel")
+statusLbl.BackgroundTransparency = 1
+statusLbl.Position = UDim2.fromOffset(8, 5)
+statusLbl.Size = UDim2.new(1, -16, 1, -10)
+statusLbl.Font = Enum.Font.Gotham
+statusLbl.TextSize = 11
+statusLbl.TextColor3 = MUTED
+statusLbl.TextWrapped = true
+statusLbl.TextXAlignment = Enum.TextXAlignment.Left
+statusLbl.TextYAlignment = Enum.TextYAlignment.Top
+statusLbl.Text = "V" .. GLITCH_UI_VER .. " · Core loads when a feature is enabled"
+statusLbl.Parent = autoStatusRow
+
 navItem("General", "General")
 navItem("Main", "Main")
 navItem("Player", "Player")
@@ -1148,12 +1189,39 @@ noClipToggle = makeToggle(playerPage, "No Clip", false, function(on)
 end)
 
 -- AUTO
+local autoRequested = { plant = false, hatch = false, equip = false }
+local autoRequestRunning = { plant = false, hatch = false, equip = false }
+
+local function applyAutoRequest(action)
+	if autoRequestRunning[action] then return end
+	autoRequestRunning[action] = true
+	task.spawn(function()
+		while autoRequested[action] do
+			if loadCore() and coreApi and coreApi.setAutoAction then
+				local ran, accepted = pcall(coreApi.setAutoAction, action, true)
+				if ran and accepted then
+					setStatus("Auto " .. action .. " on")
+					break
+				end
+				setStatus("Auto " .. action .. " retrying")
+			end
+			task.wait(0.6)
+		end
+		autoRequestRunning[action] = false
+	end)
+end
+
 local function autoActionToggle(label, action)
 	local toggle
 	toggle = makeToggle(autoPage, label, false, function(on)
-		if not loadCore() then toggle.set(false); return end
-		local ok = coreApi.setAutoAction and coreApi.setAutoAction(action, on)
-		if on and not ok then toggle.set(false) end
+		autoRequested[action] = on and true or false
+		if on then
+			setStatus("Auto " .. action .. " starting")
+			applyAutoRequest(action)
+		elseif coreLoaded and coreApi and coreApi.setAutoAction then
+			pcall(coreApi.setAutoAction, action, false)
+			setStatus("Auto " .. action .. " off")
+		end
 	end)
 end
 
