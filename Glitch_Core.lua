@@ -2,7 +2,7 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V116
+  VER: V117
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
@@ -11,7 +11,7 @@
     - Auto Hatch / Equip use the game's live inventory and shared remotes
 ]]
 
-local GLITCH_CORE_VER = "V116"
+local GLITCH_CORE_VER = "V117"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -1518,26 +1518,27 @@ local function autoHatchReadyEggs()
 			inventory = typeof(snapshot.Records) == "table" and snapshot.Records or snapshot
 		end
 	end
-	if typeof(inventory) ~= "table" then
+	if typeof(inventory) ~= "table" or next(inventory) == nil then
 		local save = getSave()
 		inventory = save and save.EggInventory
 	end
 	if typeof(inventory) ~= "table" then return 0 end
 	local count = 0
 	for uid, egg in pairs(inventory) do
-		if typeof(uid) == "string" and typeof(egg) == "table" and egg.Placement ~= nil then
+		local eggUid = typeof(uid) == "string" and uid or (typeof(egg) == "table" and egg.Uid)
+		if typeof(eggUid) == "string" and typeof(egg) == "table" and egg.Placement ~= nil then
 			local ready = false
 			-- The live module expects the egg record; older versions used its UID.
-			pcall(function() ready = IsEggReadyFn(egg) == true end)
-			if not ready then pcall(function() ready = IsEggReadyFn(uid) == true end) end
+			pcall(function() ready = IsEggReadyFn(egg) end)
+			if not ready then pcall(function() ready = IsEggReadyFn(eggUid) end) end
 			if ready then
 				-- BeginHatch can legitimately return nil after queuing its request.
 				-- A successful call (anything except explicit false) must still be
 				-- completed, otherwise ready eggs remain stuck forever.
-				local called, result = pcall(BeginHatchFn, uid)
+				local called, result = pcall(BeginHatchFn, eggUid)
 				if called and result ~= false then
 					task.wait(0.12)
-					local finished = pcall(FinishHatchFn, uid)
+					local finished = pcall(FinishHatchFn, eggUid)
 					if finished then count += 1 end
 					task.wait(0.3)
 				end
