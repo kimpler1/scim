@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V91
+  VER: V85
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V91"
+local GLITCH_CORE_VER = "V85"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -78,7 +78,6 @@ local flyOn, flySpeed = false, 60
 local infiniteJumpOn, noClipOn = false, false
 local moveConn
 local flyConn, flyVelocity = nil, nil
-local auraVelocity = nil
 local infiniteJumpConn, noClipConn
 local noClipOriginal = setmetatable({}, { __mode = "k" })
 local refreshNoClip
@@ -630,40 +629,30 @@ local function biomeAliases(name)
 	return { name }
 end
 
-local function stopAuraFollowMotion()
-	if auraVelocity then
-		pcall(function() auraVelocity:Destroy() end)
-		auraVelocity = nil
-	end
-	local hum = getHum()
-	if hum then hum.PlatformStand = false end
-end
-
--- One continuous pursuit step for Bat Aura.  Follow the live target offset
--- directly, rather than applying a force that collides with lane walls.
+-- One continuous pursuit step for Bat Aura.  Unlike stealMoveTo this never
+-- waits to reach a waypoint, so the target position is refreshed every frame.
 local function chaseCarrierStep(targetPosition, speed)
 	local root = getHRP()
 	if not root or not targetPosition or not isFiniteVec(root.Position) then return false end
 	local hum = getHum()
-	if not hum then return false end
-	hum.Sit = false
-	root.Anchored = false
-	hum.PlatformStand = false
-	local destination = Vector3.new(targetPosition.X, targetPosition.Y, targetPosition.Z)
+	if hum then
+		hum.Sit = false
+		hum.PlatformStand = false
+	end
+	local dt = RunService.Heartbeat:Wait()
+	if typeof(dt) ~= "number" or dt <= 0 then dt = 1 / 60 end
+	root = getHRP()
+	if not root then return false end
+	local y = groundedY(targetPosition.X, targetPosition.Z, root.Position.Y)
+	local destination = Vector3.new(targetPosition.X, y, targetPosition.Z)
 	local delta = destination - root.Position
 	if not isFiniteVec(delta) then return false end
+	local distance = delta.Magnitude
+	if distance <= 0.7 then return true end
+	local nextPosition = root.Position + delta.Unit * math.min(distance, (speed or CFG.approachSpeed) * dt)
+	nextPosition = Vector3.new(nextPosition.X, groundedY(nextPosition.X, nextPosition.Z, nextPosition.Y), nextPosition.Z)
 	local horizontal = Vector3.new(delta.X, 0, delta.Z)
-	local desired = horizontal.Magnitude > 0.05
-		and CFrame.lookAt(destination, destination + horizontal)
-		or CFrame.new(destination)
-	-- A high, frame-rate independent response closes a long gap quickly, then
-	-- settles at the 3.5-stud trailing offset without the physics bounce.
-	local dt = RunService.RenderStepped:Wait()
-	if typeof(dt) ~= "number" or dt <= 0 then dt = 1 / 60 end
-	local alpha = math.clamp(1 - math.exp(-24 * dt), 0.18, 0.72)
-	root.CFrame = root.CFrame:Lerp(desired, alpha)
-	root.AssemblyLinearVelocity = Vector3.zero
-	root.AssemblyAngularVelocity = Vector3.zero
+	anchor(root, horizontal.Magnitude > 0.05 and CFrame.lookAt(nextPosition, nextPosition + horizontal) or CFrame.new(nextPosition))
 	return true
 end
 
@@ -754,7 +743,7 @@ local function visibleWorldCarriers()
 		-- A carried egg can be a workspace Model welded to the character rather
 		-- than a child named "Egg".  Accept only a physical connection to that
 		-- character; proximity alone previously selected finish decorations.
-		if obj:IsA("Model") and hasEggSignal(obj) then
+		if obj:IsA("Model") then
 			local part = obj:FindFirstChildWhichIsA("BasePart", true)
 			if part then
 				for _, candidate in ipairs(roots) do
@@ -878,53 +867,6 @@ local function isNearLiveFieldEgg(position)
 		if pos and (pos - position).Magnitude <= 65 then return true end
 	end
 	return false
-end
-
--- A carrier event is derived from a real slot disappearing while a player is
--- next to it.  This is stronger than guessing from their avatar/backpack.
-local carrierSlotCache, recentCarrierPickups, carrierSlotScanAt = nil, {}, 0
-local CarrierState = { eggs = {} } -- [uid] = { lastPos, carrier, expires, dropSeenAt }
-local function recentSlotPickups()
-	local now = tick()
-	if now - carrierSlotScanAt < 0.15 then return recentCarrierPickups end
-	carrierSlotScanAt = now
-	AreaEggs = ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 0)
-	local current = {}
-	if AreaEggs then
-		for _, egg in ipairs(AreaEggs:GetChildren()) do
-			local pos = eggPos(egg)
-			if pos then current[egg.Name] = pos end
-		end
-	end
-	if carrierSlotCache then
-		for uid, oldPos in pairs(carrierSlotCache) do
-			if not current[uid] then
-				local closest, closestDist
-				for _, plr in ipairs(Players:GetPlayers()) do
-					if plr ~= LP then
-						local char = plr.Character
-						local root = char and char:FindFirstChild("HumanoidRootPart")
-						local dist = root and (root.Position - oldPos).Magnitude
-						if dist and dist <= 28 and (not closestDist or dist < closestDist) then
-							closest, closestDist = plr, dist
-						end
-					end
-				end
-				if closest then
-					recentCarrierPickups[closest] = { uid = uid, expires = now + 5 }
-					CarrierState.eggs[uid] = { lastPos = oldPos, carrier = closest, expires = now + 30 }
-				end
-			end
-		end
-	end
-	carrierSlotCache = current
-	for plr, event in pairs(recentCarrierPickups) do
-		if not plr.Parent or event.expires <= now then recentCarrierPickups[plr] = nil end
-	end
-	for uid, session in pairs(CarrierState.eggs) do
-		if session.expires <= now then CarrierState.eggs[uid] = nil end
-	end
-	return recentCarrierPickups
 end
 
 local function isInsideBiomeBounds(pos, biome)
@@ -1918,36 +1860,22 @@ local function nearestEggCarrier()
 	local hrp = getHRP()
 	if not hrp then return nil end
 	local records = recordsByUid()
-	local pickupEvents = recentSlotPickups()
 	local worldCarriers = visibleWorldCarriers()
-	local best, bestDist, bestValue, bestRarity, bestUid, bestExpires
+	local best, bestDist, bestValue, bestRarity, bestUid
 	for _, plr in ipairs(Players:GetPlayers()) do
 		local char = plr.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart")
-		local pickup = pickupEvents[plr]
-		local repickUid, repickSession
-		if root then
-			for uid, session in pairs(CarrierState.eggs) do
-				if session.dropSeenAt and tick() - session.dropSeenAt <= 3
-					and session.lastPos and (root.Position - session.lastPos).Magnitude <= 35 then
-					repickUid, repickSession = uid, session
-					break
-				end
-			end
-		end
-		local confirmed = (pickup and pickup.expires > tick()) or repickUid
-		if root and (confirmed or (isInsideAnyEggField(root.Position) and isNearLiveFieldEgg(root.Position)
-			and playerIsCarryingEgg(plr, records, worldCarriers))) then
+		if root and isInsideAnyEggField(root.Position) and isNearLiveFieldEgg(root.Position)
+			and playerIsCarryingEgg(plr, records, worldCarriers) then
 			local dist = (root.Position - hrp.Position).Magnitude
 			local value, rarity = carriedEggValue(plr, records)
 			if not bestValue or value > bestValue or (value == bestValue and dist < bestDist) then
 				best, bestDist, bestValue, bestRarity = plr, dist, value, rarity
-				bestUid = (pickup and pickup.uid) or repickUid or carriedEggUid(plr, records)
-				bestExpires = pickup and pickup.expires or (repickSession and tick() + 5) or nil
+				bestUid = carriedEggUid(plr, records)
 			end
 		end
 	end
-	return best, bestRarity, bestUid, bestExpires
+	return best, bestRarity, bestUid
 end
 
 local function findBatTool()
@@ -1966,10 +1894,9 @@ end
 local function findDroppedNear(position, radius, expectedUid)
 	local recs = recordsByUid()
 	if expectedUid then
+		local record = recs[expectedUid]
 		local visible = visibleDroppedCandidates(recs)
-		-- The pickup prompt becomes visible before the state snapshot is always
-		-- updated after a guard hit, so the visible UID is the trusted signal.
-		local candidate = visible[expectedUid]
+		local candidate = record and record.State == "Dropped" and visible[expectedUid]
 		if candidate and (candidate.Position - position).Magnitude <= radius then return candidate end
 		return nil
 	end
@@ -1987,25 +1914,7 @@ local function findDroppedNear(position, radius, expectedUid)
 end
 
 local function interceptCarrierOnce()
-	local trackedDrop, trackedUid
-	local now = tick()
-	for uid, session in pairs(CarrierState.eggs) do
-		if session.lastPos and session.expires > now then
-			local candidate = findDroppedNear(session.lastPos, 90, uid)
-			if candidate then
-				session.lastPos, session.dropSeenAt = candidate.Position, now
-				trackedDrop, trackedUid = candidate, uid
-				break
-			end
-		end
-	end
-	if trackedDrop then
-		setStatus("Recover tracked egg")
-		if approachAndSteal(trackedDrop, CFG.approachSpeed) then
-			return peelThenEscape(0, trackedUid or true)
-		end
-	end
-	local target, rarity, carriedUid, trackedUntil = nearestEggCarrier()
+	local target, rarity, carriedUid = nearestEggCarrier()
 	if not target then setStatus("No egg carrier"); task.wait(0.6); return false end
 	local bat = findBatTool()
 	if not bat then setStatus("Bat not equipped"); task.wait(0.8); return false end
@@ -2014,37 +1923,19 @@ local function interceptCarrierOnce()
 	local root = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
 	local me = getHRP()
 	if not (root and me) then return false end
-	if carriedUid then
-		CarrierState.eggs[carriedUid] = CarrierState.eggs[carriedUid] or {}
-		CarrierState.eggs[carriedUid].carrier = target
-		CarrierState.eggs[carriedUid].lastPos = root.Position
-		CarrierState.eggs[carriedUid].expires = tick() + 30
-	end
 	setStatus("Track " .. target.DisplayName .. " · " .. tostring(rarity))
 	-- Stay just behind the carrier rather than chasing the position they occupied
 	-- a frame ago.  Velocity is preferred while they run; look direction keeps the
 	-- position stable when they stop briefly.  There is deliberately no initial
 	-- waypoint path: every move is immediately re-aimed at the live target.
 	local carrierLost = false
-	local dropped, swingAt = nil, nil
 	for _ = 1, 600 do
-		if not autoFarm then
-			stopAuraFollowMotion()
-			return false
-		end
 		root = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
-		local now = tick()
-		local keepTracking = trackedUntil and now < trackedUntil
-		local liveRecords = keepTracking and nil or recordsByUid()
-		local liveWorldCarriers = keepTracking and nil or visibleWorldCarriers()
-		if not root or (not keepTracking and not playerIsCarryingEgg(target, liveRecords, liveWorldCarriers)) then
+		local liveRecords = recordsByUid()
+		local liveWorldCarriers = visibleWorldCarriers()
+		if not root or not playerIsCarryingEgg(target, liveRecords, liveWorldCarriers) then
 			carrierLost = true
 			break
-		end
-		if carriedUid and CarrierState.eggs[carriedUid] then
-			CarrierState.eggs[carriedUid].carrier = target
-			CarrierState.eggs[carriedUid].lastPos = root.Position
-			CarrierState.eggs[carriedUid].expires = tick() + 30
 		end
 		me = getHRP()
 		if me then
@@ -2055,7 +1946,7 @@ local function interceptCarrierOnce()
 				or Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
 			if heading.Magnitude < 0.01 then heading = Vector3.new(0, 0, -1) end
 			local followPos = root.Position - heading.Unit * CFG.carrierFollowDistance
-			chaseCarrierStep(followPos, CFG.escapeSpeed)
+			chaseCarrierStep(followPos, CFG.approachSpeed)
 		else
 			RunService.Heartbeat:Wait()
 		end
@@ -2063,36 +1954,21 @@ local function interceptCarrierOnce()
 		if me and (root.Position - me.Position).Magnitude <= 20 then
 			setStatus("Bat aura · " .. target.DisplayName)
 			pcall(function() bat:Activate() end)
-			swingAt = swingAt or tick()
-		end
-		-- Do not wait for the temporary carrier event to expire.  Once a swing
-		-- has had time to land, Recovery can see the spawned drop immediately.
-		if swingAt and tick() - swingAt >= 0.22 then
-			dropped = carriedUid and findDroppedNear(root.Position, 45, carriedUid) or nil
-			if not dropped then dropped = findDroppedNear(root.Position, 30) end
-			if dropped then
-				if carriedUid and CarrierState.eggs[carriedUid] then
-					CarrierState.eggs[carriedUid].lastPos = dropped.Position
-					CarrierState.eggs[carriedUid].dropSeenAt = tick()
-				end
-				break
-			end
 		end
 	end
-	stopAuraFollowMotion()
-	if not dropped and not carrierLost then return false end
+	if not carrierLost then return false end
 	local finalRoot = getHRP()
 	local dropPos = root and root.Position or (finalRoot and finalRoot.Position)
 	if not dropPos then return false end
-	local untilT = tick() + 3.0
-	while not dropped and tick() < untilT and autoFarm do
+	local untilT, dropped = tick() + 3.0, nil
+	while tick() < untilT and autoFarm do
 		-- Never fall back to a generic field/reclaim search in carrier mode.
 		-- If the carrier's UID is not visible, doing nothing is safer than
 		-- stealing a different egg.
-		dropped = carriedUid and findDroppedNear(dropPos, 45, carriedUid) or nil
+		dropped = carriedUid and findDroppedNear(dropPos, 24, carriedUid) or nil
 		-- Recovery's visible-drop scan is the fallback only after the tracked
 		-- carrier has actually lost the egg, and only at that carrier's last spot.
-		if not dropped then dropped = findDroppedNear(dropPos, 30) end
+		if not dropped then dropped = findDroppedNear(dropPos, 18) end
 		if dropped then break end
 		task.wait(0.1)
 	end
@@ -3028,7 +2904,6 @@ end
 
 function Api.stopFarm()
 	autoFarm = false
-	stopAuraFollowMotion()
 	cancelManualDeliverAssist()
 	local hum = getHum()
 	if hum then hum.PlatformStand = false end
@@ -3102,7 +2977,6 @@ end
 
 function Api.destroy()
 	autoFarm = false
-	stopAuraFollowMotion()
 	stopFly()
 	setInfiniteJump(false)
 	setNoClip(false)

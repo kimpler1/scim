@@ -4,8 +4,8 @@
   VER: V78
 ]]
 
-local GLITCH_UI_VER = "V102"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v91"
+local GLITCH_UI_VER = "V85"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v85"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -27,29 +27,6 @@ local BIOMES = {
 	"Angels / Demons",
 }
 
-local BIOME_LOCALES = {
-	ru = {
-		Forest = "Лес", Lake = "Озеро", Desert = "Пустыня", Jungle = "Джунгли", Snow = "Снег", Volcano = "Вулкан",
-		["Abyss Ocean"] = "Океан Бездны", Prehistoric = "Доисторический", Cosmic = "Космос",
-		["Cherry Blossom"] = "Цветущая сакура", ["Titan Temple"] = "Храм титанов", ["Angels / Demons"] = "Ангелы / Демоны",
-	},
-	de = {
-		Forest = "Wald", Lake = "See", Desert = "Wüste", Jungle = "Dschungel", Snow = "Schnee", Volcano = "Vulkan",
-		["Abyss Ocean"] = "Abgrund-Ozean", Prehistoric = "Prähistorisch", Cosmic = "Kosmisch",
-		["Cherry Blossom"] = "Kirschblüte", ["Titan Temple"] = "Titanentempel", ["Angels / Demons"] = "Engel / Dämonen",
-	},
-	fr = {
-		Forest = "Forêt", Lake = "Lac", Desert = "Désert", Jungle = "Jungle", Snow = "Neige", Volcano = "Volcan",
-		["Abyss Ocean"] = "Océan des abysses", Prehistoric = "Préhistorique", Cosmic = "Cosmique",
-		["Cherry Blossom"] = "Fleur de cerisier", ["Titan Temple"] = "Temple des titans", ["Angels / Demons"] = "Anges / Démons",
-	},
-	es = {
-		Forest = "Bosque", Lake = "Lago", Desert = "Desierto", Jungle = "Jungla", Snow = "Nieve", Volcano = "Volcán",
-		["Abyss Ocean"] = "Océano abisal", Prehistoric = "Prehistórico", Cosmic = "Cósmico",
-		["Cherry Blossom"] = "Flor de cerezo", ["Titan Temple"] = "Templo de titanes", ["Angels / Demons"] = "Ángeles / Demonios",
-	},
-}
-
 local selectedBiome = 1
 local targetMode = "all"
 local approachSpeed, escapeSpeed = 250, 480
@@ -60,77 +37,7 @@ local statusLbl, biomeLbl
 local debugLines = {}
 local pages = {}
 local navBtns = {}
-local currentPage = "General"
-local currentLocale = "en"
-
-local LANGUAGES = {
-	{ code = "ru", name = "Русский" },
-	{ code = "en", name = "English" },
-	{ code = "de", name = "Deutsch" },
-	{ code = "fr", name = "Français" },
-	{ code = "es", name = "Español" },
-}
-
-local LOCALES = {
-	ru = {
-		General = "Общее", Main = "Главное", Player = "Игрок", Auto = "Авто", Language = "Язык",
-		["More scripts for different places"] = "Больше скриптов на разные плейсы", ["Steal All Eggs"] = "Забрать все яйца",
-		["Steal Best Egg"] = "Забрать лучшее яйцо", ["Recover Dropped Eggs"] = "Подобрать упавшие яйца",
-		["Bat Aura"] = "Аура биты", ["ESP Players"] = "ESP игроков", ["ESP Eggs"] = "ESP яиц",
-		Speed = "Скорость", ["Walk Speed"] = "Скорость ходьбы", Fly = "Полёт", ["Fly Speed"] = "Скорость полёта",
-		["Infinite Jump"] = "Бесконечный прыжок", ["No Clip"] = "Без столкновений",
-		["Auto Plant All Eggs"] = "Авто посадка всех яиц", ["Auto Hatch Eggs"] = "Авто вылупление яиц",
-		["Auto Equip Best Pets"] = "Авто выбор лучших питомцев", ["Link copied"] = "Ссылка скопирована",
-		["Link unavailable"] = "Ссылка недоступна",
-	},
-	de = {
-		General = "Allgemein", Main = "Haupt", Player = "Spieler", Auto = "Auto", Language = "Sprache",
-		["More scripts for different places"] = "Mehr Skripte für verschiedene Spiele", ["Steal All Eggs"] = "Alle Eier nehmen",
-		["Steal Best Egg"] = "Bestes Ei nehmen", ["Recover Dropped Eggs"] = "Gefallene Eier holen",
-		["Bat Aura"] = "Schläger-Aura", ["ESP Players"] = "ESP Spieler", ["ESP Eggs"] = "ESP Eier",
-		Speed = "Tempo", ["Walk Speed"] = "Lauftempo", Fly = "Fliegen", ["Fly Speed"] = "Flugtempo",
-		["Infinite Jump"] = "Unendlicher Sprung", ["No Clip"] = "Keine Kollision",
-		["Auto Plant All Eggs"] = "Alle Eier automatisch pflanzen", ["Auto Hatch Eggs"] = "Eier automatisch ausbrüten",
-		["Auto Equip Best Pets"] = "Beste Haustiere automatisch wählen", ["Link copied"] = "Link kopiert",
-		["Link unavailable"] = "Link nicht verfügbar",
-	},
-	fr = {
-		General = "Général", Main = "Principal", Player = "Joueur", Auto = "Auto", Language = "Langue",
-		["More scripts for different places"] = "Plus de scripts pour différents jeux", ["Steal All Eggs"] = "Prendre tous les œufs",
-		["Steal Best Egg"] = "Prendre le meilleur œuf", ["Recover Dropped Eggs"] = "Récupérer les œufs tombés",
-		["Bat Aura"] = "Aura de batte", ["ESP Players"] = "ESP joueurs", ["ESP Eggs"] = "ESP œufs",
-		Speed = "Vitesse", ["Walk Speed"] = "Vitesse de marche", Fly = "Vol", ["Fly Speed"] = "Vitesse de vol",
-		["Infinite Jump"] = "Saut infini", ["No Clip"] = "Sans collision",
-		["Auto Plant All Eggs"] = "Planter tous les œufs auto", ["Auto Hatch Eggs"] = "Faire éclore les œufs auto",
-		["Auto Equip Best Pets"] = "Équiper les meilleurs animaux auto", ["Link copied"] = "Lien copié",
-		["Link unavailable"] = "Lien indisponible",
-	},
-	es = {
-		General = "General", Main = "Principal", Player = "Jugador", Auto = "Auto", Language = "Idioma",
-		["More scripts for different places"] = "Más scripts para distintos juegos", ["Steal All Eggs"] = "Tomar todos los huevos",
-		["Steal Best Egg"] = "Tomar el mejor huevo", ["Recover Dropped Eggs"] = "Recoger huevos caídos",
-		["Bat Aura"] = "Aura de bate", ["ESP Players"] = "ESP jugadores", ["ESP Eggs"] = "ESP huevos",
-		Speed = "Velocidad", ["Walk Speed"] = "Velocidad al caminar", Fly = "Volar", ["Fly Speed"] = "Velocidad de vuelo",
-		["Infinite Jump"] = "Salto infinito", ["No Clip"] = "Sin colisión",
-		["Auto Plant All Eggs"] = "Plantar todos los huevos auto", ["Auto Hatch Eggs"] = "Incubar huevos auto",
-		["Auto Equip Best Pets"] = "Equipar mejores mascotas auto", ["Link copied"] = "Enlace copiado",
-		["Link unavailable"] = "Enlace no disponible",
-	},
-}
-
-local function localizedText(key)
-	return (LOCALES[currentLocale] and LOCALES[currentLocale][key]) or key
-end
-
-local function localizedBiome(name)
-	return (BIOME_LOCALES[currentLocale] and BIOME_LOCALES[currentLocale][name]) or name
-end
-
-local function markLocalized(inst, key)
-	inst:SetAttribute("LangKey", key)
-	inst.Text = localizedText(key)
-	return inst
-end
+local currentPage = "Main"
 
 local function resolveHiddenParent()
 	if typeof(gethui) == "function" then
@@ -174,7 +81,7 @@ end
 
 local function setBiomeLabel()
 	if biomeLbl then
-		biomeLbl.Text = ("%d/%d  ·  %s"):format(selectedBiome, #BIOMES, localizedBiome(BIOMES[selectedBiome]))
+		biomeLbl.Text = ("%d/%d  ·  %s"):format(selectedBiome, #BIOMES, BIOMES[selectedBiome])
 	end
 end
 
@@ -252,17 +159,6 @@ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.DisplayOrder = 999
 gui.IgnoreGuiInset = true
 local okMount, howMount = mountGui(gui)
-
-local function applyLanguage(code)
-	currentLocale = code
-	for _, inst in ipairs(gui:GetDescendants()) do
-		local key = inst:GetAttribute("LangKey")
-		if key and (inst:IsA("TextLabel") or inst:IsA("TextButton")) then
-			inst.Text = localizedText(key)
-		end
-	end
-	setBiomeLabel()
-end
 
 local win = Instance.new("Frame")
 win.Name = "Window"
@@ -442,9 +338,7 @@ end
 local function makePage(name)
 	local f = Instance.new("ScrollingFrame")
 	f.Name = name
-	-- Keep the scrollbar inside the rounded content edge at every scroll point.
-	f.Size = UDim2.new(1, -10, 1, -16)
-	f.Position = UDim2.fromOffset(0, 8)
+	f.Size = UDim2.new(1, 0, 1, 0)
 	f.BackgroundTransparency = 1
 	f.BorderSizePixel = 0
 	f.ScrollBarThickness = 3
@@ -452,7 +346,7 @@ local function makePage(name)
 	f.CanvasSize = UDim2.fromOffset(0, 420)
 	f.Visible = false
 	f.Parent = content
-	pad(f, 16, 14, 12, 14)
+	pad(f, 16, 14, 16, 14)
 	local list = Instance.new("UIListLayout")
 	-- One clear, consistent gap between every row on every page.
 	list.Padding = UDim.new(0, 10)
@@ -491,7 +385,7 @@ local function navItem(text, pageName, isHeader)
 	b.Size = UDim2.new(1, 0, 0, 34)
 	b.BackgroundColor3 = ROW
 	b.BackgroundTransparency = 1
-	b.Text = ""
+	b.Text = "  " .. text
 	b.Font = Enum.Font.GothamBold
 	b.TextSize = 13
 	b.TextColor3 = TEXT
@@ -500,21 +394,10 @@ local function navItem(text, pageName, isHeader)
 	b.AutoButtonColor = false
 	b.Parent = sideScroll
 	corner(b, 8)
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Position = UDim2.fromOffset(17, 0)
-	label.Size = UDim2.new(1, -23, 1, 0)
-	label.Font = Enum.Font.GothamBold
-	label.TextSize = 13
-	label.TextColor3 = TEXT
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	markLocalized(label, text)
-	label.Parent = b
 	local bar = Instance.new("Frame")
 	bar.Size = UDim2.new(0, 3, 0, 16)
 	bar.Position = UDim2.new(0, 4, 0.5, -8)
 	bar.BackgroundColor3 = ACCENT
-	bar:SetAttribute("ThemeAccent", true)
 	bar.BorderSizePixel = 0
 	bar.Visible = false
 	bar.Parent = b
@@ -539,34 +422,12 @@ local function glassRow(parent, height)
 	local r = Instance.new("Frame")
 	r.Size = UDim2.new(1, 0, 0, height or 48)
 	r.BackgroundColor3 = ROW
-	r:SetAttribute("ThemeRow", true)
-	-- Keep the original darker glass treatment for function rows.
-	r.BackgroundTransparency = 0.10
+	r.BackgroundTransparency = 0.25
 	r.BorderSizePixel = 0
 	r.Parent = parent
 	corner(r, 12)
 	stroke(r, Color3.fromRGB(200, 190, 255), 1)
 	return r
-end
-
--- Visually groups controls that configure the same feature while preserving
--- the page's normal vertical layout.
-local function controlGroup(parent, height)
-	local group = Instance.new("Frame")
-	group.Size = UDim2.new(1, 0, 0, height)
-	group.BackgroundColor3 = Color3.fromRGB(46, 40, 76)
-	group:SetAttribute("ThemeGroup", true)
-	-- Group containers are outline-only; the page background shows through.
-	group.BackgroundTransparency = 1
-	group.BorderSizePixel = 0
-	group.Parent = parent
-	corner(group, 14)
-	stroke(group, Color3.fromRGB(150, 140, 225), 1)
-	pad(group, 8, 8, 8, 8)
-	local layout = Instance.new("UIListLayout")
-	layout.Padding = UDim.new(0, 7)
-	layout.Parent = group
-	return group
 end
 
 local function makeToggle(parent, labelText, default, callback)
@@ -579,14 +440,13 @@ local function makeToggle(parent, labelText, default, callback)
 	lbl.TextSize = 12
 	lbl.TextColor3 = TEXT
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	markLocalized(lbl, labelText)
+	lbl.Text = labelText
 	lbl.Parent = row
 
 	local track = Instance.new("TextButton")
 	track.Size = UDim2.fromOffset(42, 22)
 	track.Position = UDim2.new(1, -54, 0.5, -11)
 	track.BackgroundColor3 = Color3.fromRGB(55, 52, 75)
-	track:SetAttribute("ThemeToggle", true)
 	track.Text = ""
 	track.BorderSizePixel = 0
 	track.AutoButtonColor = false
@@ -635,7 +495,7 @@ local function makeSlider(parent, labelText, minV, maxV, default, callback)
 	lbl.TextSize = 12
 	lbl.TextColor3 = TEXT
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	markLocalized(lbl, labelText)
+	lbl.Text = labelText
 	lbl.Parent = row
 
 	local valLbl = Instance.new("TextLabel")
@@ -645,7 +505,6 @@ local function makeSlider(parent, labelText, minV, maxV, default, callback)
 	valLbl.Font = Enum.Font.GothamBold
 	valLbl.TextSize = 12
 	valLbl.TextColor3 = ACCENT
-	valLbl:SetAttribute("ThemeAccentText", true)
 	valLbl.TextXAlignment = Enum.TextXAlignment.Right
 	valLbl.Text = tostring(default)
 	valLbl.Parent = row
@@ -661,7 +520,6 @@ local function makeSlider(parent, labelText, minV, maxV, default, callback)
 	local fill = Instance.new("Frame")
 	fill.Size = UDim2.new((default - minV) / (maxV - minV), 0, 1, 0)
 	fill.BackgroundColor3 = ACCENT
-	fill:SetAttribute("ThemeAccent", true)
 	fill.BorderSizePixel = 0
 	fill.Parent = bar
 	corner(fill, 3)
@@ -751,206 +609,18 @@ local function makeNumRow(parent, leftText, rightText, leftDef, rightDef, onLeft
 	return a, b
 end
 
-local function makeActionButton(parent, text, callback)
-	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, 0, 0, 30)
-	button.BackgroundColor3 = ACCENT_SOFT
-	button.BackgroundTransparency = 0.22
-	button.BorderSizePixel = 0
-	button.AutoButtonColor = false
-	button.Font = Enum.Font.GothamBold
-	button.TextSize = 12
-	button.TextColor3 = TEXT
-	markLocalized(button, text)
-	button.Parent = parent
-	button:SetAttribute("ThemeAction", true)
-	corner(button, 9)
-	button.MouseButton1Click:Connect(function()
-		if callback then callback(button) end
-	end)
-	return button
-end
-
-local function showLinkToast(button, message)
-	local oldToast = button:FindFirstChild("LinkToast")
-	if oldToast then oldToast:Destroy() end
-	button.ClipsDescendants = false
-	local toast = Instance.new("TextLabel")
-	toast.Name = "LinkToast"
-	toast.Size = UDim2.new(1, 0, 0, 20)
-	toast.Position = UDim2.new(0, 0, 1, -14)
-	toast.BackgroundColor3 = Color3.fromRGB(46, 42, 72)
-	toast.BackgroundTransparency = 0.28
-	toast.BorderSizePixel = 0
-	toast.Font = Enum.Font.GothamBold
-	toast.TextSize = 10
-	toast.TextColor3 = TEXT
-	toast.Text = message
-	toast.ZIndex = button.ZIndex + 2
-	toast.Parent = button
-	corner(toast, 7)
-	TweenService:Create(toast, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Position = UDim2.new(0, 0, 1, 3),
-	}):Play()
-	task.delay(2, function()
-		if not toast.Parent then return end
-		local retreat = TweenService:Create(toast, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-			Position = UDim2.new(0, 0, 1, -14),
-		})
-		retreat:Play()
-		retreat.Completed:Wait()
-		if toast.Parent then toast:Destroy() end
-	end)
-end
-
-local function openOrCopyLink(url, button)
-	local copied = false
-	if typeof(setclipboard) == "function" then
-		copied = pcall(setclipboard, url)
-	elseif typeof(toclipboard) == "function" then
-		copied = pcall(toclipboard, url)
-	end
-	local opened = false
-	if typeof(open_url) == "function" then
-		opened = pcall(open_url, url)
-	elseif typeof(launch_url) == "function" then
-		opened = pcall(launch_url, url)
-	end
-	showLinkToast(button, copied and localizedText("Link copied") or localizedText("Link unavailable"))
-end
-
 -- Pages
-local generalPage = makePage("General")
 local mainPage = makePage("Main")
 local espPage = makePage("ESP")
 local playerPage = makePage("Player")
 local autoPage = makePage("Auto")
 
-navItem("General", "General")
 navItem("Main", "Main")
+navItem("ESP", "ESP")
 navItem("Player", "Player")
 navItem("Auto", "Auto")
-navItem("ESP", "ESP")
 
--- GENERAL
-local languageRow = glassRow(generalPage, 32)
--- The pop-up belongs above every later page row while it is open.
-languageRow.ZIndex = 30
-local languageLabel = Instance.new("TextLabel")
-languageLabel.BackgroundTransparency = 1
-languageLabel.Position = UDim2.fromOffset(14, 0)
-languageLabel.Size = UDim2.new(0, 104, 1, 0)
-languageLabel.Font = Enum.Font.GothamBold
-languageLabel.TextSize = 12
-languageLabel.TextColor3 = TEXT
-languageLabel.TextXAlignment = Enum.TextXAlignment.Left
-markLocalized(languageLabel, "Language")
-languageLabel.ZIndex = 31
-languageLabel.Parent = languageRow
-
-local languageSelect = Instance.new("TextButton")
-languageSelect.Size = UDim2.fromOffset(156, 24)
-languageSelect.Position = UDim2.new(1, -166, 0.5, -12)
-languageSelect.BackgroundColor3 = Color3.fromRGB(20, 18, 34)
-languageSelect.BackgroundTransparency = 0
-languageSelect.BorderSizePixel = 0
-languageSelect.Font = Enum.Font.GothamBold
-languageSelect.TextSize = 11
-languageSelect.TextColor3 = TEXT
-languageSelect.Text = "English"
-languageSelect.ZIndex = 31
-languageSelect.AutoButtonColor = false
-languageSelect.Parent = languageRow
-corner(languageSelect, 7)
-
-local languageMenu = Instance.new("Frame")
-languageMenu.Size = UDim2.fromOffset(156, 138)
-languageMenu.Position = UDim2.new(1, -166, 1, 5)
-languageMenu.BackgroundColor3 = Color3.fromRGB(37, 33, 60)
-languageMenu.BackgroundTransparency = 0.12
-languageMenu.BorderSizePixel = 0
-languageMenu.Visible = false
-languageMenu.ZIndex = 32
-languageMenu.Active = true
-languageMenu.Parent = languageRow
-corner(languageMenu, 9)
-stroke(languageMenu, Color3.fromRGB(180, 170, 255), 1)
-pad(languageMenu, 5, 5, 5, 5)
-local menuList = Instance.new("UIListLayout")
-menuList.Padding = UDim.new(0, 3)
-menuList.Parent = languageMenu
-for _, language in ipairs(LANGUAGES) do
-	local option = Instance.new("TextButton")
-	option.Size = UDim2.new(1, 0, 0, 23)
-	option.BackgroundColor3 = ROW
-	option.BackgroundTransparency = 1
-	option.BorderSizePixel = 0
-	option.Font = Enum.Font.GothamBold
-	option.TextSize = 11
-	option.TextColor3 = TEXT
-	option.Text = language.name
-	option.ZIndex = 33
-	option.Parent = languageMenu
-	corner(option, 6)
-	option.MouseButton1Click:Connect(function()
-		applyLanguage(language.code)
-		languageSelect.Text = language.name
-		languageMenu.Visible = false
-		setStatus("Language · " .. language.name)
-	end)
-end
-languageSelect.MouseButton1Click:Connect(function()
-	languageMenu.Visible = not languageMenu.Visible
-end)
-
-local linksRow = Instance.new("Frame")
-linksRow.Size = UDim2.new(1, 0, 0, 52)
-linksRow.BackgroundTransparency = 1
-linksRow.Parent = generalPage
-
-local moreButton = Instance.new("TextButton")
-moreButton.Size = UDim2.new(1, 0, 1, 0)
-moreButton.BackgroundColor3 = Color3.fromRGB(39, 35, 65)
-moreButton.BackgroundTransparency = 0.38
-moreButton.BorderSizePixel = 0
-moreButton.AutoButtonColor = false
-moreButton.Text = ""
-moreButton.Parent = linksRow
-corner(moreButton, 12)
-stroke(moreButton, Color3.fromRGB(160, 150, 235), 1)
-local moreAccent = Instance.new("Frame")
-moreAccent.Size = UDim2.fromOffset(3, 30)
-moreAccent.Position = UDim2.new(0, 15, 0.5, -15)
-moreAccent.BackgroundColor3 = ACCENT
-moreAccent.BackgroundTransparency = 0.12
-moreAccent.BorderSizePixel = 0
-moreAccent.Parent = moreButton
-corner(moreAccent, 2)
-local moreLabel = Instance.new("TextLabel")
-moreLabel.BackgroundTransparency = 1
-moreLabel.Position = UDim2.fromOffset(31, 0)
-moreLabel.Size = UDim2.new(1, -78, 1, 0)
-moreLabel.Font = Enum.Font.GothamBold
-moreLabel.TextSize = 12
-moreLabel.TextColor3 = TEXT
-moreLabel.TextXAlignment = Enum.TextXAlignment.Left
-markLocalized(moreLabel, "More scripts for different places")
-moreLabel.Parent = moreButton
-local moreArrow = Instance.new("TextLabel")
-moreArrow.BackgroundTransparency = 1
-moreArrow.Position = UDim2.new(1, -38, 0, 0)
-moreArrow.Size = UDim2.fromOffset(24, 52)
-moreArrow.Font = Enum.Font.GothamBold
-moreArrow.TextSize = 17
-moreArrow.TextColor3 = MUTED
-moreArrow.Text = "→"
-moreArrow.Parent = moreButton
-moreButton.MouseButton1Click:Connect(function()
-	openOrCopyLink("https://t.me/robloxskriptandsoft", moreButton)
-end)
-
-local eggTargetGroup = controlGroup(mainPage, 132)
-local zoneRow = glassRow(eggTargetGroup, 34)
+local zoneRow = glassRow(mainPage, 34)
 biomeLbl = Instance.new("TextLabel")
 biomeLbl.BackgroundTransparency = 1
 biomeLbl.Position = UDim2.fromOffset(40, 0)
@@ -987,7 +657,7 @@ nextB.Parent = zoneRow
 corner(nextB, 8)
 
 local allEggsToggle, bestEggToggle, droppedEggsToggle, carrierToggle
-allEggsToggle = makeToggle(eggTargetGroup, "Steal All Eggs", false, function(on)
+allEggsToggle = makeToggle(mainPage, "Steal All Eggs", false, function(on)
 	if not loadCore() then
 		allEggsToggle.set(false)
 		return
@@ -1008,7 +678,7 @@ allEggsToggle = makeToggle(eggTargetGroup, "Steal All Eggs", false, function(on)
 	end
 end)
 
-bestEggToggle = makeToggle(eggTargetGroup, "Steal Best Egg", false, function(on)
+bestEggToggle = makeToggle(mainPage, "Steal Best Egg", false, function(on)
 	if not loadCore() then
 		bestEggToggle.set(false)
 		return
@@ -1050,7 +720,7 @@ droppedEggsToggle = makeToggle(mainPage, "Recover Dropped Eggs", false, function
 	end
 end)
 
-carrierToggle = makeToggle(mainPage, "Bat Aura", false, function(on)
+carrierToggle = makeToggle(mainPage, "Bat Aura · Track Egg Carriers", false, function(on)
 	if not loadCore() then
 		carrierToggle.set(false)
 		return
@@ -1070,6 +740,20 @@ carrierToggle = makeToggle(mainPage, "Bat Aura", false, function(on)
 		setStatus("Bat aura off")
 	end
 end)
+
+-- Temporary on-panel console: shows the three most recent farm states.
+local debugRow = glassRow(mainPage, 52)
+statusLbl = Instance.new("TextLabel")
+statusLbl.BackgroundTransparency = 1
+statusLbl.Position = UDim2.fromOffset(12, 5)
+statusLbl.Size = UDim2.new(1, -24, 1, -10)
+statusLbl.Font = Enum.Font.Gotham
+statusLbl.TextSize = 10
+statusLbl.TextColor3 = MUTED
+statusLbl.TextXAlignment = Enum.TextXAlignment.Left
+statusLbl.TextYAlignment = Enum.TextYAlignment.Top
+statusLbl.Text = #debugLines > 0 and table.concat(debugLines, "\n") or "Debug · idle"
+statusLbl.Parent = debugRow
 
 prevB.MouseButton1Click:Connect(function()
 	selectedBiome = selectedBiome <= 1 and #BIOMES or (selectedBiome - 1)
@@ -1095,15 +779,14 @@ makeToggle(espPage, "ESP Eggs", false, function(on)
 end)
 -- PLAYER
 local walkToggle
-local speedGroup = controlGroup(playerPage, 106)
-walkToggle = makeToggle(speedGroup, "Speed", false, function(on)
+walkToggle = makeToggle(playerPage, "Speed", false, function(on)
 	if not loadCore() then
 		walkToggle.set(false)
 		return
 	end
 	if coreApi.setWalkSpeed then coreApi.setWalkSpeed(on, walkSpeedVal) end
 end)
-makeSlider(speedGroup, "Walk Speed", 16, 500, walkSpeedVal, function(v)
+makeSlider(playerPage, "Walk Speed", 16, 500, walkSpeedVal, function(v)
 	walkSpeedVal = v
 	-- dragging slider implies you want it on (Boblo-style always apply while enabled)
 	if not walkToggle.get() then
@@ -1114,15 +797,14 @@ makeSlider(speedGroup, "Walk Speed", 16, 500, walkSpeedVal, function(v)
 end)
 
 local flyToggle
-local flyGroup = controlGroup(playerPage, 106)
-flyToggle = makeToggle(flyGroup, "Fly", false, function(on)
+flyToggle = makeToggle(playerPage, "Fly (WASD + Space/Ctrl)", false, function(on)
 	if not loadCore() then
 		flyToggle.set(false)
 		return
 	end
 	if coreApi.setFly then coreApi.setFly(on, flySpeedVal) end
 end)
-makeSlider(flyGroup, "Fly Speed", 20, 500, flySpeedVal, function(v)
+makeSlider(playerPage, "Fly Speed", 20, 500, flySpeedVal, function(v)
 	flySpeedVal = v
 	if flyToggle.get() and coreApi and coreApi.setFly then
 		coreApi.setFly(true, flySpeedVal)
@@ -1162,11 +844,11 @@ autoActionToggle("Auto Hatch Eggs", "hatch")
 autoActionToggle("Auto Equip Best Pets", "equip")
 
 -- default page
-generalPage.Visible = true
-if navBtns.General then
-	navBtns.General.bar.Visible = true
-	navBtns.General.btn.BackgroundTransparency = 0.35
-	navBtns.General.btn.BackgroundColor3 = Color3.fromRGB(55, 48, 95)
+mainPage.Visible = true
+if navBtns.Main then
+	navBtns.Main.bar.Visible = true
+	navBtns.Main.btn.BackgroundTransparency = 0.35
+	navBtns.Main.btn.BackgroundColor3 = Color3.fromRGB(55, 48, 95)
 end
 
 local minimized = false
