@@ -2,16 +2,16 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V120
+  VER: V121
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     - Auto Steal: repeat pickup returns to base on a stable route (no upward drift)
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
-    - Auto Plant / Hatch are isolated from farm, movement, and GUI controls
+    - Auto Plant / Hatch use the live owner-egg list only
 ]]
 
-local GLITCH_CORE_VER = "V120"
+local GLITCH_CORE_VER = "V121"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -62,7 +62,7 @@ local CFG = {
 }
 
 local EggState, PlotState, SlotIdentity, AssetsData, SaveModule
-local IsEggReadyFn, BeginHatchFn, FinishHatchFn, WearEggToolFn, PlantEggFn
+local IsEggReadyFn, BeginHatchFn, FinishHatchFn, WearEggToolFn, DoffEggToolFn, PlantEggFn, ReadOwnerEggsFn
 local EquipBestPetsRemote, BatSwingRemote
 local CarryFn, SnapshotFn, SyncSnapshot, CarrySignal
 local GetRespawn, GetPlot, InPlot, IsFirstUid, BuildSlotKey
@@ -179,7 +179,9 @@ local function bindGame()
 	BeginHatchFn = pick(EggState, "BeginHatch", "RequestHatchEgg")
 	FinishHatchFn = pick(EggState, "FinishHatch", "RequestCompleteHatchEgg")
 	WearEggToolFn = pick(EggState, "WearEggTool", "RequestEquipTool")
+	DoffEggToolFn = pick(EggState, "DoffEggTool", "RequestUnequipTool")
 	PlantEggFn = pick(EggState, "PlantEgg", "RequestPlaceEgg")
+	ReadOwnerEggsFn = pick(EggState, "ReadOwnerEggs")
 	CFG.readOwnedEggs = pick(EggState, "ReadOwnedEggs", "GetOwnedEggSnapshot")
 	local Remotes = Shared and req(Shared, "Remotes", 2)
 	local function sharedRemote(group, name)
@@ -1482,133 +1484,72 @@ local function plotPlacementCFrames()
 	return result
 end
 
--- Isolated Auto-tab adapter.  It is based on the open Boblo lifecycle
--- (WearTool -> PlaceEgg, IsReadyToHatch -> BeginHatch -> FinishHatch), but
--- resolves the direct EggWorld remote only while an Auto action is running.
--- No lookup or request here runs during panel/core initialization.
-local function autoEggRemote(name, ...)
-	local args = table.pack(...)
-	local remote = nil
-	pcall(function()
-		local packages = ReplicatedStorage:FindFirstChild("Packages")
-		local networking = packages and packages:FindFirstChild("Networking")
-		if networking then
-			remote = networking:FindFirstChild("RF/EggWorld/" .. name)
-			if not remote then
-				for _, item in ipairs(networking:GetDescendants()) do
-					if (item:IsA("RemoteFunction") or item:IsA("RemoteEvent")) and item.Name == name then
-						remote = item
-						break
-					end
-				end
-			end
+-- The plot loop is intentionally self-contained.  It mirrors the live
+-- EggState flow used by the reference implementation and never moves the
+-- character or touches the farm state.
+local function autoOwnerEggs()
+	if not ReadOwnerEggsFn then return nil end
+	local ok, records = pcall(ReadOwnerEggsFn, LP.UserId)
+	return ok and typeof(records) == "table" and records or nil
+end
+
+local function autoPlotPlacement()
+	if not GetPlot then return nil end
+	local ok, plot = pcall(GetPlot)
+	if not ok or not plot or not plot.PetArea or not plot.CenterPoint then return nil end
+	local area, center = plot.PetArea, plot.CenterPoint
+	if not (area:IsA("BasePart") and center:IsA("BasePart")) then return nil end
+	local hrp = getHRP()
+	local chosen = nil
+	for _ = 1, 8 do
+		local x = (math.random() - 0.5) * math.max(0, math.min(area.Size.X - 8, 28))
+		local z = (math.random() - 0.5) * math.max(0, math.min(area.Size.Z - 8, 22))
+		local world = area.CFrame * CFrame.new(x, 0.5, z)
+		chosen = center.CFrame:ToObjectSpace(world)
+		if not hrp or (Vector3.new(world.X, hrp.Position.Y, world.Z) - hrp.Position).Magnitude >= 14 then
+			return chosen
 		end
-	end)
-	if not remote then return false end
-	local ok, result = pcall(function()
-		if remote:IsA("RemoteFunction") then
-			return remote:InvokeServer(table.unpack(args, 1, args.n))
-		end
-		remote:FireServer(table.unpack(args, 1, args.n))
-		return true
-	end)
-	if not ok then return false end
-	return result == true or (typeof(result) == "table" and result[1] == true)
-end
-
-local function autoWearEgg(uid)
-	if WearEggToolFn then
-		local ok, result = pcall(WearEggToolFn, uid)
-		if ok and result == true then return true end
 	end
-	return autoEggRemote("AskWearTool", uid)
-end
-
-local function autoPlaceEgg(uid, localCFrame)
-	if PlantEggFn then
-		local ok, result = pcall(PlantEggFn, uid, localCFrame)
-		if ok and result == true then return true end
-	end
-	return autoEggRemote("AskPlaceEgg", uid, localCFrame)
-end
-
-local function autoBeginHatch(uid)
-	if BeginHatchFn then
-		local ok, result = pcall(BeginHatchFn, uid)
-		if ok and result == true then return true end
-	end
-	return autoEggRemote("AskHatch", uid)
-end
-
-local function autoFinishHatch(uid)
-	if FinishHatchFn then
-		local ok, result = pcall(FinishHatchFn, uid)
-		if ok and result ~= false then return true end
-	end
-	return autoEggRemote("AskFinishHatch", uid)
+	return chosen
 end
 
 local function autoPlantOwnedEggs()
-	if isActuallyCarrying() then return 0 end
-	local save = getSave()
-	local inventory = save and save.EggInventory
-	if typeof(inventory) ~= "table" then return 0 end
-	local positions = plotPlacementCFrames()
-	if #positions == 0 then return 0 end
-	local planted, index = 0, 1
-	for uid, egg in pairs(inventory) do
-		if typeof(uid) == "string" and typeof(egg) == "table" and egg.Placement == nil and not egg.Locked then
-			if not autoWearEgg(uid) then return planted end
-			task.wait(0.12)
-			for offset = 0, #positions - 1 do
-				local placementIndex = (index + offset - 1) % #positions + 1
-				if autoPlaceEgg(uid, positions[placementIndex]) then
-					task.wait(0.2)
-					local fresh = getSave()
-					local placedEgg = fresh and fresh.EggInventory and fresh.EggInventory[uid]
-					if typeof(placedEgg) == "table" and placedEgg.Placement ~= nil then
-						planted += 1
-						index = placementIndex % #positions + 1
-						break
-					end
-				end
-			end
+	if isActuallyCarrying() or not PlantEggFn then return 0 end
+	local records = autoOwnerEggs()
+	if not records then return 0 end
+	for uid, egg in pairs(records) do
+		local eggUid = typeof(egg) == "table" and (egg.Uid or uid) or nil
+		if typeof(eggUid) == "string" and typeof(egg) == "table" and egg.Placement == nil and not egg.Locked then
+			local placement = autoPlotPlacement()
+			if not placement then return 0 end
+			if WearEggToolFn then pcall(WearEggToolFn, eggUid) end
+			local ok, planted = pcall(PlantEggFn, eggUid, placement)
+			if DoffEggToolFn then pcall(DoffEggToolFn, eggUid) end
+			return ok and planted == true and 1 or 0
 		end
 	end
-	return planted
+	return 0
 end
 
 local function autoHatchReadyEggs()
-	if isActuallyCarrying() then return 0 end
-	local inventories, seen = {}, {}
-	local save = getSave()
-	if save and typeof(save.EggInventory) == "table" then table.insert(inventories, save.EggInventory) end
-	if CFG.readOwnedEggs then
-		local ok, snapshot = pcall(CFG.readOwnedEggs, LP.UserId)
-		if ok and typeof(snapshot) == "table" then
-			table.insert(inventories, typeof(snapshot.Records) == "table" and snapshot.Records or snapshot)
-		end
-	end
-	local count = 0
-	for _, inventory in ipairs(inventories) do
-		for uid, egg in pairs(inventory) do
-			local eggUid = typeof(uid) == "string" and uid or (typeof(egg) == "table" and egg.Uid)
-			if typeof(eggUid) == "string" and not seen[eggUid] and typeof(egg) == "table" and egg.Placement ~= nil then
-				seen[eggUid] = true
-				local ready = IsEggReadyFn == nil
-				if IsEggReadyFn then
-					pcall(function() ready = IsEggReadyFn(eggUid) == true end)
-					if not ready then pcall(function() ready = IsEggReadyFn(egg) == true end) end
-				end
-				if ready and autoBeginHatch(eggUid) then
-					task.wait(0.08)
-					if autoFinishHatch(eggUid) then count += 1 end
-					task.wait(0.3)
-				end
+	if isActuallyCarrying() or not IsEggReadyFn or not BeginHatchFn or not FinishHatchFn then return 0 end
+	local records = autoOwnerEggs()
+	if not records then return 0 end
+	for uid, egg in pairs(records) do
+		local eggUid = typeof(egg) == "table" and (egg.Uid or uid) or nil
+		if typeof(eggUid) == "string" and typeof(egg) == "table" and egg.Placement ~= nil then
+			local ready = false
+			pcall(function() ready = IsEggReadyFn(eggUid) == true end)
+			if ready then
+				local ok = pcall(function()
+					BeginHatchFn(eggUid)
+					FinishHatchFn(eggUid)
+				end)
+				return ok and 1 or 0
 			end
 		end
 	end
-	return count
+	return 0
 end
 
 local function runAutoActions()
@@ -3163,10 +3104,8 @@ end
 function Api.setAutoAction(name, on)
 	if autoActions[name] == nil then return false end
 	bindGame()
-	-- Auto Plant/Hatch also have their own EggWorld remote fallback.  Do not
-	-- reject their toggle merely because a client helper is not loaded yet.
-	if on and name == "plant" and not SaveModule then setStatus("Auto plant unavailable"); return false end
-	if on and name == "hatch" and (not CFG.readOwnedEggs and not SaveModule) then setStatus("Auto hatch unavailable"); return false end
+	if on and name == "plant" and (not ReadOwnerEggsFn or not PlantEggFn) then setStatus("Auto plant unavailable"); return false end
+	if on and name == "hatch" and (not ReadOwnerEggsFn or not IsEggReadyFn or not BeginHatchFn or not FinishHatchFn) then setStatus("Auto hatch unavailable"); return false end
 	if on and name == "equip" and not EquipBestPetsRemote then setStatus("Auto equip unavailable"); return false end
 	if on and name == "chests" and next(CFG.chestRemotes or {}) == nil then setStatus("Auto chests unavailable"); return false end
 	autoActions[name] = on and true or false
