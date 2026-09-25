@@ -4,13 +4,35 @@
   VER: V78
 ]]
 
-local GLITCH_UI_VER = "V112"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v112"
+local GLITCH_UI_VER = "V113"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v113"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local LP = Players.LocalPlayer
+
+-- Only one Glitch core may control the character.  Users commonly run an
+-- updated loader over an existing panel; without this handoff the old farm
+-- loop keeps its former biome and can fight the new route at the same time.
+local sessionEnv = _G
+if typeof(getgenv) == "function" then
+	local ok, env = pcall(getgenv)
+	if ok and typeof(env) == "table" then sessionEnv = env end
+end
+local priorSession = sessionEnv.__SAE_GLITCH_SESSION
+if typeof(priorSession) == "table" then
+	local priorApi = priorSession.api
+	if typeof(priorApi) == "table" then
+		pcall(function() if priorApi.stopFarm then priorApi.stopFarm() end end)
+		pcall(function() if priorApi.destroy then priorApi.destroy() end end)
+	end
+	pcall(function()
+		if priorSession.gui and priorSession.gui.Parent then priorSession.gui:Destroy() end
+	end)
+end
+local activeSession = {}
+sessionEnv.__SAE_GLITCH_SESSION = activeSession
 
 local ACCENT = Color3.fromRGB(120, 110, 255)
 local ACCENT_SOFT = Color3.fromRGB(90, 80, 200)
@@ -200,6 +222,7 @@ local function loadCore()
 	end
 	coreApi = api
 	coreLoaded = true
+	activeSession.api = coreApi
 	local cv = (coreApi.getVersion and coreApi.getVersion()) or "?"
 	setStatus(("Core OK  UI %s  Core %s"):format(GLITCH_UI_VER, tostring(cv)))
 	return true
@@ -251,6 +274,7 @@ gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.DisplayOrder = 999
 gui.IgnoreGuiInset = true
+activeSession.gui = gui
 local okMount, howMount = mountGui(gui)
 
 local function applyLanguage(code)
@@ -1187,6 +1211,9 @@ closeBtn.MouseButton1Click:Connect(function()
 		end)
 	end
 	gui:Destroy()
+	if sessionEnv.__SAE_GLITCH_SESSION == activeSession then
+		sessionEnv.__SAE_GLITCH_SESSION = nil
+	end
 end)
 
 if not okMount then
