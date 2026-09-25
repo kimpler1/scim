@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V94
+  VER: V95
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V94"
+local GLITCH_CORE_VER = "V95"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -404,7 +404,14 @@ local function swapStealHumanoid()
 	clone.Sit = false
 	clone.PlatformStand = false
 	clone.AutoRotate = true
-	hum:Destroy()
+	-- Keep the real Humanoid alive while the farm uses its guarded clone.  The
+	-- default Roblox controls retain their reference to this instance, and it
+	-- is reattached as soon as Auto Farm is switched off.
+	if CFG.preFarmHumanoid and CFG.preFarmHumanoid.Parent == nil then
+		pcall(function() CFG.preFarmHumanoid:Destroy() end)
+	end
+	CFG.preFarmHumanoid = hum
+	hum.Parent = nil
 	clone.Parent = char
 	local hrp = char:FindFirstChild("HumanoidRootPart")
 	if hrp then
@@ -423,6 +430,14 @@ end
 local function restoreManualRunAnimation()
 	local char = getChar()
 	local hum = getHum()
+	if char and CFG.preFarmHumanoid and CFG.preFarmHumanoid.Parent == nil then
+		if hum and hum ~= CFG.preFarmHumanoid then
+			pcall(function() hum:Destroy() end)
+		end
+		CFG.preFarmHumanoid.Parent = char
+		hum = CFG.preFarmHumanoid
+		CFG.preFarmHumanoid = nil
+	end
 	if not (char and hum) then return end
 	hum.Sit = false
 	hum.PlatformStand = false
@@ -437,25 +452,6 @@ local function restoreManualRunAnimation()
 	pcall(function() hum.Jump = false end)
 	pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
 	pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
-	-- Replacing a Humanoid can leave Roblox's default jump binding attached to
-	-- the destroyed instance.  Recreate only the missing manual jump response
-	-- after Auto Farm has stopped; it never runs during the farm route or Fly.
-	if not CFG.manualJumpConn then
-		CFG.manualJumpConn = UserInputService.JumpRequest:Connect(function()
-			if autoFarm or flyOn then return end
-			local current = getHum()
-			if not current or current.Health <= 0 or current.PlatformStand then return end
-			local state = current:GetState()
-			if current.FloorMaterial == Enum.Material.Air
-				and state ~= Enum.HumanoidStateType.Landed
-				and state ~= Enum.HumanoidStateType.Running then
-				return
-			end
-			pcall(function() current.Jump = true end)
-			pcall(function() current:ChangeState(Enum.HumanoidStateType.Jumping) end)
-		end)
-		table.insert(connections, CFG.manualJumpConn)
-	end
 	local animate = char:FindFirstChild("Animate")
 	if animate and animate:IsA("LocalScript") then
 		pcall(function() animate.Disabled = true end)
@@ -3138,6 +3134,7 @@ end
 
 function Api.destroy()
 	autoFarm = false
+	restoreManualRunAnimation()
 	stopAuraFollowMotion()
 	stopFly()
 	setInfiniteJump(false)
