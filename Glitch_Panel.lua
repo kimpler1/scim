@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V117
+  VER: V118
 ]]
 
-local GLITCH_UI_VER = "V117"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v117"
+local GLITCH_UI_VER = "V118"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v118"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -190,7 +190,7 @@ end
 local function setStatus(t)
 	local text = tostring(t)
 	table.insert(debugLines, text)
-	while #debugLines > 3 do table.remove(debugLines, 1) end
+	while #debugLines > 6 do table.remove(debugLines, 1) end
 	if statusLbl then statusLbl.Text = table.concat(debugLines, "\n") end
 end
 
@@ -854,7 +854,7 @@ local espPage = makePage("ESP")
 local playerPage = makePage("Player")
 local autoPage = makePage("Auto")
 
-local autoStatusRow = glassRow(autoPage, 54)
+local autoStatusRow = glassRow(autoPage, 102)
 statusLbl = Instance.new("TextLabel")
 statusLbl.BackgroundTransparency = 1
 statusLbl.Position = UDim2.fromOffset(8, 5)

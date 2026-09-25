@@ -2,7 +2,7 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V117
+  VER: V118
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
@@ -10,7 +10,7 @@
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
 ]]
 
-local GLITCH_CORE_VER = "V117"
+local GLITCH_CORE_VER = "V118"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -57,6 +57,7 @@ local CFG = {
 	retryAttempts = 3,
 	targetMode = "all",
 	carrierFollowDistance = 3.5,
+	petActionInterval = 5,
 	status = function() end,
 }
 
@@ -70,6 +71,7 @@ local Bound = false
 local autoFarm, carrying, farmBusy = false, false, false
 local autoActions = { plant = false, hatch = false, deploy = false, collect = false }
 local autoActionsBusy = false
+local petActionBusy = { deploy = false, collect = false }
 local connections = {}
 local espFlags = { players = false, eggs = false, beasts = false }
 local espMap = {} -- [key] = { hl, bb, label, kind }
@@ -1655,21 +1657,22 @@ end
 -- places/equips the server's best available pets; "AskCollect" claims only
 -- their accumulated earnings. Neither endpoint sells or deletes a pet.
 CFG.runPetAction = function(action)
+	if action ~= "deploy" and action ~= "collect" then return false end
+	if petActionBusy[action] then return false end
 	local remote = action == "deploy" and EquipBestPetsRemote or CFG.collectPetEarningsRemote
 	local title = action == "deploy" and "Deploy best pets" or "Collect pet earnings"
 	if not remote then
 		setStatus(title .. ": game API not found")
 		return false
 	end
-	local ok
-	if action == "collect" then
-		ok = invokeRemote(remote, { Kind = "Claim" })
-	else
-		ok = invokeRemote(remote)
-	end
+	-- Both endpoints are zero-argument RemoteFunctions.  Passing a made-up
+	-- payload to AskCollect makes the server reject an otherwise valid request.
+	petActionBusy[action] = true
+	local ok = invokeRemote(remote)
+	petActionBusy[action] = false
 	local via = CFG.describeRemote(remote)
 	if ok then
-		setStatus(title .. (action == "collect" and " (Claim): sent via " or ": sent via ") .. via)
+		setStatus(title .. ": sent via " .. via)
 	else
 		local detail = CFG.lastRemoteError or CFG.lastRemoteResult or "server rejected request"
 		setStatus(title .. ": failed via " .. via .. " — " .. tostring(detail))
@@ -1691,11 +1694,11 @@ local function runAutoActions()
 				local n = autoHatchReadyEggs()
 				if n > 0 then setStatus("Auto hatched " .. tostring(n)) end
 			end
-			if autoActions.deploy and tick() - (CFG.lastPetDeployAt or 0) >= 5 then
+			if autoActions.deploy and tick() - (CFG.lastPetDeployAt or 0) >= CFG.petActionInterval then
 				CFG.lastPetDeployAt = tick()
 				CFG.runPetAction("deploy")
 			end
-			if autoActions.collect and tick() - (CFG.lastPetCollectAt or 0) >= 5 then
+			if autoActions.collect and tick() - (CFG.lastPetCollectAt or 0) >= CFG.petActionInterval then
 				CFG.lastPetCollectAt = tick()
 				CFG.runPetAction("collect")
 			end
@@ -3234,6 +3237,14 @@ function Api.setAutoAction(name, on)
 			or (name == "deploy" and not EquipBestPetsRemote)
 			or (name == "collect" and not CFG.collectPetEarningsRemote)
 		setStatus(waiting and ("Auto " .. name .. " waiting for game API") or ("Auto " .. name .. " on"))
+		-- Pet actions must not wait for a potentially long plant/hatch scan.
+		-- One server request handles the complete equipped/earnings collection.
+		if not waiting and (name == "deploy" or name == "collect") then
+			if name == "deploy" then CFG.lastPetDeployAt = tick() else CFG.lastPetCollectAt = tick() end
+			task.spawn(function()
+				if autoActions[name] then CFG.runPetAction(name) end
+			end)
+		end
 		runAutoActions()
 	else
 		setStatus("Auto " .. name .. " off")
