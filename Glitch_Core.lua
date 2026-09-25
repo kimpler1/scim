@@ -7,7 +7,7 @@
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     - Auto Steal: repeat pickup returns to base on a stable route (no upward drift)
-]] 
+]]
 
 local GLITCH_CORE_VER = "V110"
 
