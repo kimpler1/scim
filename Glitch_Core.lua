@@ -2,16 +2,16 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V114
+  VER: V115
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     - Auto Steal: repeat pickup returns to base on a stable route (no upward drift)
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
-    - Dropped-egg recovery scans field drops directly from the base
+    - Dropped-egg recovery scans streamed snapshots directly from the base
 ]]
 
-local GLITCH_CORE_VER = "V114"
+local GLITCH_CORE_VER = "V115"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -1211,12 +1211,6 @@ local function findDroppedEggGlobal()
 	local best, bestScore, bestZone
 	for uid, rec in pairs(recs) do
 		if rec.State == "Dropped" then
-			local candidate = visible[uid]
-			-- Recovery must never select a pickup in a player's plot/base.
-			-- Only field positions are valid, even when a snapshot says Dropped.
-			if not candidate or not isInsideAnyEggField(candidate.Position) then
-				continue
-			end
 			local zoneIndex = 0
 			for i, biomeName in ipairs(CFG.biomes) do
 				if matchesBiome(rec.AreaId, biomeName) then
@@ -1224,6 +1218,23 @@ local function findDroppedEggGlobal()
 					break
 				end
 			end
+			local candidate = visible[uid]
+			-- A visible pickup is trusted only when its actual position is in a
+			-- field. This excludes player plots and the safe/base area.
+			if candidate and not isInsideAnyEggField(candidate.Position) then
+				candidate = nil
+			end
+			-- From a base, distant drop models may not be streamed yet. The game
+			-- snapshot still supplies their UID and position; use it only when its
+			-- AreaId identifies a real game field. Once nearby, trySteal resolves
+			-- the physical prompt normally.
+			if not candidate and zoneIndex > 0 then
+				local cf = rec.BoundsCFrame or rec.BottomCFrame
+				if typeof(cf) == "CFrame" then
+					candidate = { Name = uid, Position = cf.Position, Record = rec }
+				end
+			end
+			if not candidate then continue end
 			local eggScore = bestEggScore(rec, (candidate.Position - hrp.Position).Magnitude)
 			local score = zoneIndex * 1000000000000 + eggScore
 			if not bestScore or score > bestScore then
