@@ -4,7 +4,7 @@
   VER: V78
 ]]
 
-local GLITCH_UI_VER = "V101"
+local GLITCH_UI_VER = "V102"
 local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v91"
 
 local Players = game:GetService("Players")
@@ -25,6 +25,29 @@ local BIOMES = {
 	"Forest", "Lake", "Desert", "Jungle", "Snow", "Volcano",
 	"Abyss Ocean", "Prehistoric", "Cosmic", "Cherry Blossom", "Titan Temple",
 	"Angels / Demons",
+}
+
+local BIOME_LOCALES = {
+	ru = {
+		Forest = "Лес", Lake = "Озеро", Desert = "Пустыня", Jungle = "Джунгли", Snow = "Снег", Volcano = "Вулкан",
+		["Abyss Ocean"] = "Океан Бездны", Prehistoric = "Доисторический", Cosmic = "Космос",
+		["Cherry Blossom"] = "Цветущая сакура", ["Titan Temple"] = "Храм титанов", ["Angels / Demons"] = "Ангелы / Демоны",
+	},
+	de = {
+		Forest = "Wald", Lake = "See", Desert = "Wüste", Jungle = "Dschungel", Snow = "Schnee", Volcano = "Vulkan",
+		["Abyss Ocean"] = "Abgrund-Ozean", Prehistoric = "Prähistorisch", Cosmic = "Kosmisch",
+		["Cherry Blossom"] = "Kirschblüte", ["Titan Temple"] = "Titanentempel", ["Angels / Demons"] = "Engel / Dämonen",
+	},
+	fr = {
+		Forest = "Forêt", Lake = "Lac", Desert = "Désert", Jungle = "Jungle", Snow = "Neige", Volcano = "Volcan",
+		["Abyss Ocean"] = "Océan des abysses", Prehistoric = "Préhistorique", Cosmic = "Cosmique",
+		["Cherry Blossom"] = "Fleur de cerisier", ["Titan Temple"] = "Temple des titans", ["Angels / Demons"] = "Anges / Démons",
+	},
+	es = {
+		Forest = "Bosque", Lake = "Lago", Desert = "Desierto", Jungle = "Jungla", Snow = "Nieve", Volcano = "Volcán",
+		["Abyss Ocean"] = "Océano abisal", Prehistoric = "Prehistórico", Cosmic = "Cósmico",
+		["Cherry Blossom"] = "Flor de cerezo", ["Titan Temple"] = "Templo de titanes", ["Angels / Demons"] = "Ángeles / Demonios",
+	},
 }
 
 local selectedBiome = 1
@@ -51,7 +74,7 @@ local LANGUAGES = {
 local LOCALES = {
 	ru = {
 		General = "Общее", Main = "Главное", Player = "Игрок", Auto = "Авто", Language = "Язык",
-		["More Scripts"] = "Больше скриптов", ["Steal All Eggs"] = "Забрать все яйца",
+		["More scripts for different places"] = "Больше скриптов на разные плейсы", ["Steal All Eggs"] = "Забрать все яйца",
 		["Steal Best Egg"] = "Забрать лучшее яйцо", ["Recover Dropped Eggs"] = "Подобрать упавшие яйца",
 		["Bat Aura"] = "Аура биты", ["ESP Players"] = "ESP игроков", ["ESP Eggs"] = "ESP яиц",
 		Speed = "Скорость", ["Walk Speed"] = "Скорость ходьбы", Fly = "Полёт", ["Fly Speed"] = "Скорость полёта",
@@ -62,7 +85,7 @@ local LOCALES = {
 	},
 	de = {
 		General = "Allgemein", Main = "Haupt", Player = "Spieler", Auto = "Auto", Language = "Sprache",
-		["More Scripts"] = "Mehr Skripte", ["Steal All Eggs"] = "Alle Eier nehmen",
+		["More scripts for different places"] = "Mehr Skripte für verschiedene Spiele", ["Steal All Eggs"] = "Alle Eier nehmen",
 		["Steal Best Egg"] = "Bestes Ei nehmen", ["Recover Dropped Eggs"] = "Gefallene Eier holen",
 		["Bat Aura"] = "Schläger-Aura", ["ESP Players"] = "ESP Spieler", ["ESP Eggs"] = "ESP Eier",
 		Speed = "Tempo", ["Walk Speed"] = "Lauftempo", Fly = "Fliegen", ["Fly Speed"] = "Flugtempo",
@@ -73,7 +96,7 @@ local LOCALES = {
 	},
 	fr = {
 		General = "Général", Main = "Principal", Player = "Joueur", Auto = "Auto", Language = "Langue",
-		["More Scripts"] = "Plus de scripts", ["Steal All Eggs"] = "Prendre tous les œufs",
+		["More scripts for different places"] = "Plus de scripts pour différents jeux", ["Steal All Eggs"] = "Prendre tous les œufs",
 		["Steal Best Egg"] = "Prendre le meilleur œuf", ["Recover Dropped Eggs"] = "Récupérer les œufs tombés",
 		["Bat Aura"] = "Aura de batte", ["ESP Players"] = "ESP joueurs", ["ESP Eggs"] = "ESP œufs",
 		Speed = "Vitesse", ["Walk Speed"] = "Vitesse de marche", Fly = "Vol", ["Fly Speed"] = "Vitesse de vol",
@@ -84,7 +107,7 @@ local LOCALES = {
 	},
 	es = {
 		General = "General", Main = "Principal", Player = "Jugador", Auto = "Auto", Language = "Idioma",
-		["More Scripts"] = "Más scripts", ["Steal All Eggs"] = "Tomar todos los huevos",
+		["More scripts for different places"] = "Más scripts para distintos juegos", ["Steal All Eggs"] = "Tomar todos los huevos",
 		["Steal Best Egg"] = "Tomar el mejor huevo", ["Recover Dropped Eggs"] = "Recoger huevos caídos",
 		["Bat Aura"] = "Aura de bate", ["ESP Players"] = "ESP jugadores", ["ESP Eggs"] = "ESP huevos",
 		Speed = "Velocidad", ["Walk Speed"] = "Velocidad al caminar", Fly = "Volar", ["Fly Speed"] = "Velocidad de vuelo",
@@ -97,6 +120,10 @@ local LOCALES = {
 
 local function localizedText(key)
 	return (LOCALES[currentLocale] and LOCALES[currentLocale][key]) or key
+end
+
+local function localizedBiome(name)
+	return (BIOME_LOCALES[currentLocale] and BIOME_LOCALES[currentLocale][name]) or name
 end
 
 local function markLocalized(inst, key)
@@ -147,7 +174,7 @@ end
 
 local function setBiomeLabel()
 	if biomeLbl then
-		biomeLbl.Text = ("%d/%d  ·  %s"):format(selectedBiome, #BIOMES, BIOMES[selectedBiome])
+		biomeLbl.Text = ("%d/%d  ·  %s"):format(selectedBiome, #BIOMES, localizedBiome(BIOMES[selectedBiome]))
 	end
 end
 
@@ -234,6 +261,7 @@ local function applyLanguage(code)
 			inst.Text = localizedText(key)
 		end
 	end
+	setBiomeLabel()
 end
 
 local win = Instance.new("Frame")
@@ -823,22 +851,23 @@ languageLabel.Parent = languageRow
 local languageSelect = Instance.new("TextButton")
 languageSelect.Size = UDim2.fromOffset(156, 24)
 languageSelect.Position = UDim2.new(1, -166, 0.5, -12)
-languageSelect.BackgroundColor3 = Color3.fromRGB(30, 28, 48)
-languageSelect.BackgroundTransparency = 0.22
+languageSelect.BackgroundColor3 = Color3.fromRGB(20, 18, 34)
+languageSelect.BackgroundTransparency = 0
 languageSelect.BorderSizePixel = 0
 languageSelect.Font = Enum.Font.GothamBold
 languageSelect.TextSize = 11
 languageSelect.TextColor3 = TEXT
 languageSelect.Text = "English"
 languageSelect.ZIndex = 31
+languageSelect.AutoButtonColor = false
 languageSelect.Parent = languageRow
 corner(languageSelect, 7)
 
 local languageMenu = Instance.new("Frame")
 languageMenu.Size = UDim2.fromOffset(156, 138)
 languageMenu.Position = UDim2.new(1, -166, 1, 5)
-languageMenu.BackgroundColor3 = Color3.fromRGB(18, 16, 32)
-languageMenu.BackgroundTransparency = 0
+languageMenu.BackgroundColor3 = Color3.fromRGB(37, 33, 60)
+languageMenu.BackgroundTransparency = 0.12
 languageMenu.BorderSizePixel = 0
 languageMenu.Visible = false
 languageMenu.ZIndex = 32
@@ -875,19 +904,50 @@ languageSelect.MouseButton1Click:Connect(function()
 end)
 
 local linksRow = Instance.new("Frame")
-linksRow.Size = UDim2.new(1, 0, 0, 32)
+linksRow.Size = UDim2.new(1, 0, 0, 52)
 linksRow.BackgroundTransparency = 1
 linksRow.Parent = generalPage
-local bypassButton = makeActionButton(linksRow, "Bypass Bot", function(button)
-	openOrCopyLink("https://t.me/bypas_bot", button)
+
+local moreButton = Instance.new("TextButton")
+moreButton.Size = UDim2.new(1, 0, 1, 0)
+moreButton.BackgroundColor3 = Color3.fromRGB(39, 35, 65)
+moreButton.BackgroundTransparency = 0.38
+moreButton.BorderSizePixel = 0
+moreButton.AutoButtonColor = false
+moreButton.Text = ""
+moreButton.Parent = linksRow
+corner(moreButton, 12)
+stroke(moreButton, Color3.fromRGB(160, 150, 235), 1)
+local moreAccent = Instance.new("Frame")
+moreAccent.Size = UDim2.fromOffset(3, 30)
+moreAccent.Position = UDim2.new(0, 15, 0.5, -15)
+moreAccent.BackgroundColor3 = ACCENT
+moreAccent.BackgroundTransparency = 0.12
+moreAccent.BorderSizePixel = 0
+moreAccent.Parent = moreButton
+corner(moreAccent, 2)
+local moreLabel = Instance.new("TextLabel")
+moreLabel.BackgroundTransparency = 1
+moreLabel.Position = UDim2.fromOffset(31, 0)
+moreLabel.Size = UDim2.new(1, -78, 1, 0)
+moreLabel.Font = Enum.Font.GothamBold
+moreLabel.TextSize = 12
+moreLabel.TextColor3 = TEXT
+moreLabel.TextXAlignment = Enum.TextXAlignment.Left
+markLocalized(moreLabel, "More scripts for different places")
+moreLabel.Parent = moreButton
+local moreArrow = Instance.new("TextLabel")
+moreArrow.BackgroundTransparency = 1
+moreArrow.Position = UDim2.new(1, -38, 0, 0)
+moreArrow.Size = UDim2.fromOffset(24, 52)
+moreArrow.Font = Enum.Font.GothamBold
+moreArrow.TextSize = 17
+moreArrow.TextColor3 = MUTED
+moreArrow.Text = "→"
+moreArrow.Parent = moreButton
+moreButton.MouseButton1Click:Connect(function()
+	openOrCopyLink("https://t.me/robloxskriptandsoft", moreButton)
 end)
-bypassButton.Size = UDim2.new(0.5, -4, 1, 0)
-bypassButton.Position = UDim2.new(0.5, 4, 0, 0)
-local moreButton = makeActionButton(linksRow, "More Scripts", function(button)
-	openOrCopyLink("https://t.me/robloxskriptandsoft", button)
-end)
-moreButton.Size = UDim2.new(0.5, -4, 1, 0)
-moreButton.Position = UDim2.fromOffset(0, 0)
 
 local eggTargetGroup = controlGroup(mainPage, 132)
 local zoneRow = glassRow(eggTargetGroup, 34)
