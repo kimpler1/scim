@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V113
+  VER: V114
 ]]
 
-local GLITCH_UI_VER = "V113"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v113"
+local GLITCH_UI_VER = "V114"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v114"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")

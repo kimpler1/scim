@@ -2,7 +2,7 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V113
+  VER: V114
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
@@ -10,7 +10,7 @@
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
 ]]
 
-local GLITCH_CORE_VER = "V113"
+local GLITCH_CORE_VER = "V114"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -60,13 +60,14 @@ local CFG = {
 	status = function() end,
 }
 
-local EggState, PlotState, SlotIdentity, AssetsData, SaveModule
+local EggState, PlotState, SlotIdentity, AssetsData, SaveModule, HatchAnimation
 local IsEggReadyFn, BeginHatchFn, FinishHatchFn, WearEggToolFn, PlantEggFn, ReadOwnedEggsFn
 local EquipBestPetsRemote, BatSwingRemote
 local CarryFn, SnapshotFn, SyncSnapshot, CarrySignal
 local GetRespawn, GetPlot, InPlot, IsFirstUid, BuildSlotKey
 local AreasFolder, GuardAreas, AreaEggs
 local Bound = false
+local lastBindAttempt = 0
 local autoFarm, carrying, farmBusy = false, false, false
 local autoActions = { plant = false, hatch = false, equip = false }
 local autoActionsBusy = false
@@ -133,6 +134,16 @@ local function findRemoteByPathOrName(path, name)
 	end
 end
 
+-- Public implementations expose the lifecycle through these RF/EggWorld
+-- remotes when the Client.EggState module is not present in the session.
+local function findEggWorldRemote(...)
+	for i = 1, select("#", ...) do
+		local name = select(i, ...)
+		local remote = findRemoteByPathOrName("EggWorld/" .. name, name)
+		if remote then return remote end
+	end
+end
+
 local function invokeRemote(remote, ...)
 	if not remote then return false end
 	local args = table.pack(...)
@@ -153,7 +164,8 @@ local function getSave()
 end
 
 local function bindGame()
-	if Bound then return true end
+	if Bound and tick() - lastBindAttempt < 1.5 then return true end
+	lastBindAttempt = tick()
 	local Client = ch(ReplicatedStorage, "Client", 2)
 	local Shared = ch(ReplicatedStorage, "Shared", 2)
 	local Util = Shared and ch(Shared, "Util", 1)
@@ -161,6 +173,7 @@ local function bindGame()
 
 	EggState = Client and req(Client, "Egg" .. "State", 2)
 	PlotState = Client and req(Client, "Plot" .. "State", 2)
+	HatchAnimation = Client and req(Client, "Hatch" .. "Animation", 1)
 	SaveModule = Shared and req(Shared, "Save", 2)
 	SlotIdentity = Util and req(Util, "Area" .. "Egg" .. "Slot" .. "Identity", 1)
 	AssetsData = Data and req(Data, "Assets", 2)
@@ -179,9 +192,29 @@ local function bindGame()
 	FinishHatchFn = pick(EggState, "FinishHatch", "RequestCompleteHatchEgg")
 	WearEggToolFn = pick(EggState, "WearEggTool", "RequestEquipTool")
 	PlantEggFn = pick(EggState, "PlantEgg", "RequestPlaceEgg")
-	ReadOwnedEggsFn = pick(EggState, "ReadOwnedEggs", "GetOwnedEggs", "ReadLocalEggs")
-	EquipBestPetsRemote = findRemoteByPathOrName("Haul/WearBest", "WearBest")
-		or findRemoteByPathOrName("PenRoster/ConfirmEquipBestBadge", "ConfirmEquipBestBadge")
+	ReadOwnedEggsFn = pick(EggState, "ReadOwnerEggs", "ReadOwnedEggs", "GetOwnedEggs", "ReadLocalEggs")
+
+	local placeRemote = findEggWorldRemote("AskPlaceEgg", "PlaceEgg")
+	local wearRemote = findEggWorldRemote("AskWearTool", "WearEggTool")
+	local beginHatchRemote = findEggWorldRemote("AskHatch", "AskHatchEgg", "BeginHatch", "RequestHatchEgg")
+	local finishHatchRemote = findEggWorldRemote("AskFinishHatch", "AskCompleteHatchEgg", "FinishHatch", "RequestCompleteHatchEgg")
+	if not PlantEggFn and placeRemote then
+		PlantEggFn = function(uid, placement)
+			return invokeRemote(placeRemote, { Uid = uid, LocalCFrame = placement })
+		end
+	end
+	if not WearEggToolFn and wearRemote then
+		WearEggToolFn = function(uid) return invokeRemote(wearRemote, uid) end
+	end
+	if not BeginHatchFn and beginHatchRemote then
+		BeginHatchFn = function(uid) return invokeRemote(beginHatchRemote, uid) end
+	end
+	if not FinishHatchFn and finishHatchRemote then
+		FinishHatchFn = function(uid) return invokeRemote(finishHatchRemote, uid) end
+	end
+
+	EquipBestPetsRemote = findRemoteByPathOrName("RF/Haul/WearBest", "WearBest")
+		or findRemoteByPathOrName("RF/PenRoster/ConfirmEquipBestBadge", "ConfirmEquipBestBadge")
 	BatSwingRemote = findRemoteByPathOrName("BatSwing/Trigger", "BatSwing")
 
 	-- Oxide: Packages.Networking["RF/EggWorld/AskFieldEggCarry"]
@@ -246,8 +279,8 @@ local function bindGame()
 		table.insert(connections, carryConn)
 	end
 
-	Bound = true
-	return true
+	Bound = EggState ~= nil or PlantEggFn ~= nil or BeginHatchFn ~= nil or EquipBestPetsRemote ~= nil
+	return Bound
 end
 
 local function getChar() return LP.Character end
@@ -1490,16 +1523,38 @@ local function ownedEggRecords()
 	return result
 end
 
-local function plotPlacementCFrames()
+local function plotPlacementCFrames(egg, owned, reserved)
 	if not GetPlot then return {} end
 	local ok, plot = pcall(GetPlot)
 	if not ok or not plot or not plot.PetArea or not plot.CenterPoint then return {} end
 	local area, center = plot.PetArea, plot.CenterPoint
+	local spacing = math.max(6, (tonumber(egg and egg.AssetScale) or 1) * 4)
 	local result = {}
-	for x = -area.Size.X * 0.5 + 5, area.Size.X * 0.5 - 5, 7 do
-		for z = -area.Size.Z * 0.5 + 5, area.Size.Z * 0.5 - 5, 7 do
-			local world = area.CFrame:PointToWorldSpace(Vector3.new(x, 1, z))
-			table.insert(result, center.CFrame:ToObjectSpace(CFrame.new(world)))
+	local function isFree(localCFrame)
+		local point = (center.CFrame * localCFrame).Position
+		for _, entry in ipairs(owned or {}) do
+			local other = entry.egg or entry
+			local placement = typeof(other) == "table" and other.Placement
+			local otherCFrame = typeof(placement) == "table" and placement.LocalCFrame
+			if typeof(otherCFrame) == "CFrame" then
+				local otherPoint = (center.CFrame * otherCFrame).Position
+				local distance = Vector3.new(point.X - otherPoint.X, 0, point.Z - otherPoint.Z).Magnitude
+				local otherSpacing = math.max(6, (tonumber(other.AssetScale) or 1) * 4)
+				if distance < math.max(spacing, otherSpacing) then return false end
+			end
+		end
+		for _, other in ipairs(reserved or {}) do
+			local otherPoint = (center.CFrame * other.LocalCFrame).Position
+			local distance = Vector3.new(point.X - otherPoint.X, 0, point.Z - otherPoint.Z).Magnitude
+			if distance < math.max(spacing, other.Spacing) then return false end
+		end
+		return true
+	end
+	for x = -area.Size.X * 0.5 + spacing, area.Size.X * 0.5 - spacing, spacing do
+		for z = -area.Size.Z * 0.5 + spacing, area.Size.Z * 0.5 - spacing, spacing do
+			local world = area.CFrame:PointToWorldSpace(Vector3.new(x, area.Size.Y * 0.5, z))
+			local localCFrame = center.CFrame:ToObjectSpace(CFrame.new(world))
+			if isFree(localCFrame) then table.insert(result, localCFrame) end
 		end
 	end
 	return result
@@ -1511,13 +1566,18 @@ local function autoPlantOwnedEggs()
 		setStatus("Auto plant: stand in base")
 		return 0
 	end
-	local positions = plotPlacementCFrames()
-	if #positions == 0 then return 0 end
 	local planted = 0
-	for _, entry in ipairs(ownedEggRecords()) do
+	local owned = ownedEggRecords()
+	local reserved = {}
+	for _, entry in ipairs(owned) do
 		if not autoActions.plant or isActuallyCarrying() then break end
 		local uid, egg = entry.uid, entry.egg
 		if typeof(uid) == "string" and typeof(egg) == "table" and egg.Placement == nil and not egg.Locked then
+			local positions = plotPlacementCFrames(egg, owned, reserved)
+			if #positions == 0 then
+				setStatus("Auto plant: plot full")
+				break
+			end
 			if WearEggToolFn then pcall(WearEggToolFn, uid) end
 			task.wait(0.12)
 			local placedThisEgg = false
@@ -1530,6 +1590,7 @@ local function autoPlantOwnedEggs()
 					placedThisEgg = true
 					nextPlacementIndex = index % #positions + 1
 					planted += 1
+					table.insert(reserved, { LocalCFrame = positions[index], Spacing = math.max(6, (tonumber(egg.AssetScale) or 1) * 4) })
 					task.wait(0.22)
 					break
 				end
@@ -1538,6 +1599,19 @@ local function autoPlantOwnedEggs()
 		end
 	end
 	return planted
+end
+
+local function playHatchAnimation(uid, egg)
+	if HatchAnimation and typeof(HatchAnimation.Play) == "function" then
+		local renders = Workspace:FindFirstChild("PlacedEggRenders")
+		local model = renders and renders:FindFirstChild(tostring(LP.UserId) .. "_" .. uid)
+		if model then
+			local ok = pcall(HatchAnimation.Play, LP.UserId, uid, egg, model, false)
+			if ok then return end
+		end
+	end
+	-- Older client builds complete the hatch without a local animation module.
+	task.wait(0.35)
 end
 
 local function autoHatchReadyEggs()
@@ -1555,7 +1629,7 @@ local function autoHatchReadyEggs()
 				-- only an explicit false is a rejection, so still send completion.
 				local ok, result = pcall(BeginHatchFn, uid)
 				if ok and result ~= false then
-					task.wait(0.10)
+					playHatchAnimation(uid, egg)
 					pcall(FinishHatchFn, uid)
 					count += 1
 					task.wait(0.3)
@@ -3109,12 +3183,12 @@ end
 function Api.setAutoAction(name, on)
 	if autoActions[name] == nil then return false end
 	bindGame()
-	if on and name == "plant" and not PlantEggFn then setStatus("Auto plant unavailable"); return false end
-	if on and name == "hatch" and (not IsEggReadyFn or not BeginHatchFn or not FinishHatchFn) then setStatus("Auto hatch unavailable"); return false end
-	if on and name == "equip" and not EquipBestPetsRemote then setStatus("Auto equip unavailable"); return false end
 	autoActions[name] = on and true or false
 	if on then
-		setStatus("Auto " .. name .. " on")
+		local waiting = (name == "plant" and not PlantEggFn)
+			or (name == "hatch" and (not IsEggReadyFn or not BeginHatchFn or not FinishHatchFn))
+			or (name == "equip" and not EquipBestPetsRemote)
+		setStatus(waiting and ("Auto " .. name .. " waiting for game API") or ("Auto " .. name .. " on"))
 		runAutoActions()
 	else
 		setStatus("Auto " .. name .. " off")
