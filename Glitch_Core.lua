@@ -2,15 +2,16 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V113
+  VER: V116
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     - Auto Steal: repeat pickup returns to base on a stable route (no upward drift)
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
+    - Auto Hatch / Equip use the game's live inventory and shared remotes
 ]]
 
-local GLITCH_CORE_VER = "V113"
+local GLITCH_CORE_VER = "V116"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -68,7 +69,7 @@ local GetRespawn, GetPlot, InPlot, IsFirstUid, BuildSlotKey
 local AreasFolder, GuardAreas, AreaEggs
 local Bound = false
 local autoFarm, carrying, farmBusy = false, false, false
-local autoActions = { plant = false, hatch = false, equip = false }
+local autoActions = { plant = false, hatch = false, equip = false, rewards = false, chests = false }
 local autoActionsBusy = false
 local connections = {}
 local espFlags = { players = false, eggs = false, beasts = false }
@@ -179,8 +180,25 @@ local function bindGame()
 	FinishHatchFn = pick(EggState, "FinishHatch", "RequestCompleteHatchEgg")
 	WearEggToolFn = pick(EggState, "WearEggTool", "RequestEquipTool")
 	PlantEggFn = pick(EggState, "PlantEgg", "RequestPlaceEgg")
-	EquipBestPetsRemote = findRemoteByPathOrName("Haul/WearBest", "WearBest")
+	CFG.readOwnedEggs = pick(EggState, "ReadOwnedEggs", "GetOwnedEggSnapshot")
+	local Remotes = Shared and req(Shared, "Remotes", 2)
+	local function sharedRemote(group, name)
+		local folder = typeof(Remotes) == "table" and Remotes[group]
+		local remote = typeof(folder) == "table" and folder[name]
+		return typeof(remote) == "Instance" and remote or nil
+	end
+	EquipBestPetsRemote = sharedRemote("Haul", "WearBest")
+		or sharedRemote("PenRoster", "ConfirmEquipBestBadge")
+		or findRemoteByPathOrName("Haul/WearBest", "WearBest")
 		or findRemoteByPathOrName("PenRoster/ConfirmEquipBestBadge", "ConfirmEquipBestBadge")
+	CFG.rewardRemotes = {
+		sharedRemote("AwayEarnings", "AskCollect") or findRemoteByPathOrName("AwayEarnings/AskCollect", "AskCollect"),
+		sharedRemote("Codex", "AskRedeemAll") or findRemoteByPathOrName("Codex/AskRedeemAll", "AskRedeemAll"),
+	}
+	CFG.chestRemotes = {
+		sharedRemote("MonsterParasite", "AskChestClaim") or findRemoteByPathOrName("MonsterParasite/AskChestClaim", "AskChestClaim"),
+		sharedRemote("MonsterParasite", "AskChestTake") or findRemoteByPathOrName("MonsterParasite/AskChestTake", "AskChestTake"),
+	}
 	BatSwingRemote = findRemoteByPathOrName("BatSwing/Trigger", "BatSwing")
 
 	-- Oxide: Packages.Networking["RF/EggWorld/AskFieldEggCarry"]
@@ -1493,22 +1511,34 @@ end
 
 local function autoHatchReadyEggs()
 	if not IsEggReadyFn or not BeginHatchFn or not FinishHatchFn or isActuallyCarrying() then return 0 end
-	local save = getSave()
-	local inventory = save and save.EggInventory
+	local inventory = nil
+	if CFG.readOwnedEggs then
+		local ok, snapshot = pcall(CFG.readOwnedEggs, LP.UserId)
+		if ok and typeof(snapshot) == "table" then
+			inventory = typeof(snapshot.Records) == "table" and snapshot.Records or snapshot
+		end
+	end
+	if typeof(inventory) ~= "table" then
+		local save = getSave()
+		inventory = save and save.EggInventory
+	end
 	if typeof(inventory) ~= "table" then return 0 end
 	local count = 0
 	for uid, egg in pairs(inventory) do
 		if typeof(uid) == "string" and typeof(egg) == "table" and egg.Placement ~= nil then
 			local ready = false
-			pcall(function() ready = IsEggReadyFn(uid) == true end)
-			if not ready then pcall(function() ready = IsEggReadyFn(egg) == true end) end
+			-- The live module expects the egg record; older versions used its UID.
+			pcall(function() ready = IsEggReadyFn(egg) == true end)
+			if not ready then pcall(function() ready = IsEggReadyFn(uid) == true end) end
 			if ready then
-				local started = false
-				pcall(function() started = BeginHatchFn(uid) == true end)
-				if started then
-					task.wait(0.08)
-					pcall(FinishHatchFn, uid)
-					count += 1
+				-- BeginHatch can legitimately return nil after queuing its request.
+				-- A successful call (anything except explicit false) must still be
+				-- completed, otherwise ready eggs remain stuck forever.
+				local called, result = pcall(BeginHatchFn, uid)
+				if called and result ~= false then
+					task.wait(0.12)
+					local finished = pcall(FinishHatchFn, uid)
+					if finished then count += 1 end
 					task.wait(0.3)
 				end
 			end
@@ -1521,7 +1551,7 @@ local function runAutoActions()
 	if autoActionsBusy then return end
 	autoActionsBusy = true
 	task.spawn(function()
-		while autoActions.plant or autoActions.hatch or autoActions.equip do
+		while autoActions.plant or autoActions.hatch or autoActions.equip or autoActions.rewards or autoActions.chests do
 			bindGame()
 			if autoActions.plant then
 				local n = autoPlantOwnedEggs()
@@ -1531,7 +1561,23 @@ local function runAutoActions()
 				local n = autoHatchReadyEggs()
 				if n > 0 then setStatus("Auto hatched " .. tostring(n)) end
 			end
-			if autoActions.equip and EquipBestPetsRemote then invokeRemote(EquipBestPetsRemote) end
+			if autoActions.equip and EquipBestPetsRemote then
+				if invokeRemote(EquipBestPetsRemote) then setStatus("Best pets equipped") end
+			end
+			if autoActions.rewards then
+				local claimed = 0
+				for _, remote in pairs(CFG.rewardRemotes or {}) do
+					if invokeRemote(remote) then claimed += 1 end
+				end
+				if claimed > 0 then setStatus("Rewards claimed " .. tostring(claimed)) end
+			end
+			if autoActions.chests then
+				local claimed = 0
+				for _, remote in pairs(CFG.chestRemotes or {}) do
+					if invokeRemote(remote) then claimed += 1 end
+				end
+				if claimed > 0 then setStatus("Chest claim sent") end
+			end
 			task.wait(3.0)
 		end
 		autoActionsBusy = false
@@ -3061,8 +3107,10 @@ function Api.setAutoAction(name, on)
 	if autoActions[name] == nil then return false end
 	bindGame()
 	if on and name == "plant" and (not PlantEggFn or not WearEggToolFn or not SaveModule) then setStatus("Auto plant unavailable"); return false end
-	if on and name == "hatch" and (not IsEggReadyFn or not BeginHatchFn or not FinishHatchFn or not SaveModule) then setStatus("Auto hatch unavailable"); return false end
+	if on and name == "hatch" and (not IsEggReadyFn or not BeginHatchFn or not FinishHatchFn or (not CFG.readOwnedEggs and not SaveModule)) then setStatus("Auto hatch unavailable"); return false end
 	if on and name == "equip" and not EquipBestPetsRemote then setStatus("Auto equip unavailable"); return false end
+	if on and name == "rewards" and next(CFG.rewardRemotes or {}) == nil then setStatus("Auto rewards unavailable"); return false end
+	if on and name == "chests" and next(CFG.chestRemotes or {}) == nil then setStatus("Auto chests unavailable"); return false end
 	autoActions[name] = on and true or false
 	if on then
 		setStatus("Auto " .. name .. " on")
