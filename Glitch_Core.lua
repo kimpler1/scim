@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V92
+  VER: V91
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V92"
+local GLITCH_CORE_VER = "V91"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -389,14 +389,6 @@ local function swapStealHumanoid()
 	end
 
 	hum.Archivable = true
-	-- Snapshot only the player-facing jump settings.  The farm route below is
-	-- otherwise identical to the V102 reference implementation.
-	CFG.jumpRestore = {
-		useJumpPower = hum.UseJumpPower,
-		jumpPower = hum.JumpPower,
-		jumpHeight = hum.JumpHeight,
-		autoJumpEnabled = hum.AutoJumpEnabled,
-	}
 	local clone = hum:Clone()
 	if not clone then return false end
 	clone:SetAttribute("SAE_SafeHum", true)
@@ -426,23 +418,6 @@ local function restoreManualRunAnimation()
 	hum.Sit = false
 	hum.PlatformStand = false
 	hum.AutoRotate = true
-	if CFG.jumpRestore then
-		pcall(function() hum.UseJumpPower = CFG.jumpRestore.useJumpPower end)
-		pcall(function() hum.JumpPower = CFG.jumpRestore.jumpPower end)
-		pcall(function() hum.JumpHeight = CFG.jumpRestore.jumpHeight end)
-		pcall(function() hum.AutoJumpEnabled = CFG.jumpRestore.autoJumpEnabled end)
-	end
-	pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Jumping, true) end)
-	if not CFG.jumpRestoreConn then
-		CFG.jumpRestoreConn = UserInputService.JumpRequest:Connect(function()
-			if autoFarm or flyOn then return end
-			local activeHum = getHum()
-			if not activeHum or activeHum.Health <= 0 or activeHum.PlatformStand then return end
-			pcall(function() activeHum.Jump = true end)
-			pcall(function() activeHum:ChangeState(Enum.HumanoidStateType.Jumping) end)
-		end)
-		table.insert(connections, CFG.jumpRestoreConn)
-	end
 	pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
 	pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
 	local animate = char:FindFirstChild("Animate")
