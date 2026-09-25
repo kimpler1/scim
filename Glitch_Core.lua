@@ -2,14 +2,14 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V92
+  VER: V93
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     Manual WS/Fly steal: 1 guard hit → 2nd grab → base
 ]]
 
-local GLITCH_CORE_VER = "V92"
+local GLITCH_CORE_VER = "V93"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -67,7 +67,6 @@ local GetRespawn, GetPlot, InPlot, IsFirstUid, BuildSlotKey
 local AreasFolder, GuardAreas, AreaEggs
 local Bound = false
 local autoFarm, carrying, farmBusy = false, false, false
-local farmJumpBaseline = nil
 local autoActions = { plant = false, hatch = false, equip = false }
 local autoActionsBusy = false
 local connections = {}
@@ -393,7 +392,7 @@ local function swapStealHumanoid()
 	-- The game can alter jump settings while the guard route is active.  Keep
 	-- the original values before the replacement Humanoid is installed, so
 	-- manual jumping is restored exactly when Auto Farm stops.
-	farmJumpBaseline = {
+	CFG.farmJumpBaseline = {
 		useJumpPower = hum.UseJumpPower,
 		jumpPower = hum.JumpPower,
 		jumpHeight = hum.JumpHeight,
@@ -428,11 +427,11 @@ local function restoreManualRunAnimation()
 	hum.Sit = false
 	hum.PlatformStand = false
 	hum.AutoRotate = true
-	if farmJumpBaseline then
-		pcall(function() hum.UseJumpPower = farmJumpBaseline.useJumpPower end)
-		pcall(function() hum.JumpPower = farmJumpBaseline.jumpPower end)
-		pcall(function() hum.JumpHeight = farmJumpBaseline.jumpHeight end)
-		pcall(function() hum.AutoJumpEnabled = farmJumpBaseline.autoJumpEnabled end)
+	if CFG.farmJumpBaseline then
+		pcall(function() hum.UseJumpPower = CFG.farmJumpBaseline.useJumpPower end)
+		pcall(function() hum.JumpPower = CFG.farmJumpBaseline.jumpPower end)
+		pcall(function() hum.JumpHeight = CFG.farmJumpBaseline.jumpHeight end)
+		pcall(function() hum.AutoJumpEnabled = CFG.farmJumpBaseline.autoJumpEnabled end)
 	end
 	pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Jumping, true) end)
 	pcall(function() hum.Jump = false end)
