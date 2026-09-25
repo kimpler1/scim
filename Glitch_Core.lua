@@ -2,16 +2,16 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V119
+  VER: V118
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
     - Auto Steal: repeat pickup returns to base on a stable route (no upward drift)
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
-    - Auto Hatch All / Plant All follow the game's confirmed egg lifecycle calls
+    - Auto Hatch All / Plant All send requests for every eligible owned egg
 ]]
 
-local GLITCH_CORE_VER = "V119"
+local GLITCH_CORE_VER = "V118"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -64,7 +64,6 @@ local CFG = {
 local EggState, PlotState, SlotIdentity, AssetsData, SaveModule
 local IsEggReadyFn, BeginHatchFn, FinishHatchFn, WearEggToolFn, PlantEggFn
 local EquipBestPetsRemote, BatSwingRemote
-local EggWearRemote, EggPlaceRemote, EggHatchRemote, EggFinishHatchRemote
 local CarryFn, SnapshotFn, SyncSnapshot, CarrySignal
 local GetRespawn, GetPlot, InPlot, IsFirstUid, BuildSlotKey
 local AreasFolder, GuardAreas, AreaEggs
@@ -148,24 +147,6 @@ local function invokeRemote(remote, ...)
 	return ok and result ~= false
 end
 
--- EggWorld's RemoteFunctions return true in older builds and { true, ... }
--- in newer Networking builds.  Keep the raw result so lifecycle actions are
--- never advanced after an explicitly rejected request.
-local function invokeRemoteConfirmed(remote, ...)
-	if not remote then return false end
-	local args = table.pack(...)
-	local ok, result = pcall(function()
-		if remote:IsA("RemoteFunction") then
-			return remote:InvokeServer(table.unpack(args, 1, args.n))
-		end
-		remote:FireServer(table.unpack(args, 1, args.n))
-		return true
-	end)
-	if not ok then return false end
-	if typeof(result) == "table" then return result[1] == true end
-	return result == true
-end
-
 local function getSave()
 	if not SaveModule or typeof(SaveModule.Get) ~= "function" then return nil end
 	local ok, save = pcall(SaveModule.Get)
@@ -215,13 +196,6 @@ local function bindGame()
 		sharedRemote("MonsterParasite", "AskChestTake") or findRemoteByPathOrName("MonsterParasite/AskChestTake", "AskChestTake"),
 	}
 	BatSwingRemote = findRemoteByPathOrName("BatSwing/Trigger", "BatSwing")
-	-- Keep direct networking fallbacks alongside the client EggState module.
-	-- Some game builds expose the lifecycle functions late, while these remotes
-	-- are already available under Packages.Networking.
-	EggWearRemote = findRemoteByPathOrName("EggWorld/AskWearTool", "AskWearTool")
-	EggPlaceRemote = findRemoteByPathOrName("EggWorld/AskPlaceEgg", "AskPlaceEgg")
-	EggHatchRemote = findRemoteByPathOrName("EggWorld/AskHatch", "AskHatch")
-	EggFinishHatchRemote = findRemoteByPathOrName("EggWorld/AskFinishHatch", "AskFinishHatch")
 
 	-- Oxide: Packages.Networking["RF/EggWorld/AskFieldEggCarry"]
 	local function findCarryRemote()
@@ -1508,42 +1482,10 @@ local function plotPlacementCFrames()
 	return result
 end
 
-local function requestEggWear(uid)
-	if WearEggToolFn then
-		local ok, result = pcall(WearEggToolFn, uid)
-		if ok and (result == true or (typeof(result) == "table" and result[1] == true)) then return true end
-	end
-	return invokeRemoteConfirmed(EggWearRemote, uid)
-end
-
-local function requestEggPlace(uid, localCFrame)
-	if PlantEggFn then
-		local ok, result = pcall(PlantEggFn, uid, localCFrame)
-		if ok and (result == true or (typeof(result) == "table" and result[1] == true)) then return true end
-	end
-	return invokeRemoteConfirmed(EggPlaceRemote, uid, localCFrame)
-end
-
-local function requestEggHatchStart(uid)
-	if BeginHatchFn then
-		local ok, result = pcall(BeginHatchFn, uid)
-		if ok and (result == true or (typeof(result) == "table" and result[1] == true)) then return true end
-	end
-	return invokeRemoteConfirmed(EggHatchRemote, uid)
-end
-
-local function requestEggHatchFinish(uid)
-	if FinishHatchFn then
-		local ok, result = pcall(FinishHatchFn, uid)
-		if ok and result ~= false and not (typeof(result) == "table" and result[1] == false) then return true end
-	end
-	return invokeRemoteConfirmed(EggFinishHatchRemote, uid)
-end
-
 local function autoPlantOwnedEggs()
 	-- Do not depend on the client "held egg" indicator here.  Wearing an
 	-- inventory egg legitimately enables that indicator before PlantEgg runs.
-	if not PlantEggFn and not EggPlaceRemote then return 0 end
+	if not PlantEggFn then return 0 end
 	local save = getSave()
 	local inventory = save and save.EggInventory
 	if typeof(inventory) ~= "table" then return 0 end
@@ -1552,17 +1494,18 @@ local function autoPlantOwnedEggs()
 	local planted, index = 0, 1
 	for uid, egg in pairs(inventory) do
 		if typeof(uid) == "string" and typeof(egg) == "table" and egg.Placement == nil and not egg.Locked then
-			if not requestEggWear(uid) then
-				continue
-			end
+			if WearEggToolFn then pcall(WearEggToolFn, uid) end
 			task.wait(0.12)
 			for offset = 0, #positions - 1 do
 				local placementIndex = (index + offset - 1) % #positions + 1
-				if requestEggPlace(uid, positions[placementIndex]) then
+				local called, result = pcall(PlantEggFn, uid, positions[placementIndex])
+				if called and result ~= false then
+					-- The module normally returns true. Some builds queue the request
+					-- and return nil, so verify the owned record after a short sync.
 					task.wait(0.2)
 					local fresh = getSave()
 					local placedEgg = fresh and fresh.EggInventory and fresh.EggInventory[uid]
-					if typeof(placedEgg) == "table" and placedEgg.Placement ~= nil then
+					if result == true or (typeof(placedEgg) == "table" and placedEgg.Placement ~= nil) then
 						planted += 1
 						index = placementIndex % #positions + 1
 						break
@@ -1575,7 +1518,7 @@ local function autoPlantOwnedEggs()
 end
 
 local function autoHatchReadyEggs()
-	if (not BeginHatchFn and not EggHatchRemote) or (not FinishHatchFn and not EggFinishHatchRemote) then return 0 end
+	if not BeginHatchFn or not FinishHatchFn then return 0 end
 	local inventories, seen = {}, {}
 	local save = getSave()
 	if save and typeof(save.EggInventory) == "table" then table.insert(inventories, save.EggInventory) end
@@ -1589,19 +1532,15 @@ local function autoHatchReadyEggs()
 	for _, inventory in ipairs(inventories) do
 		for uid, egg in pairs(inventory) do
 			local eggUid = typeof(uid) == "string" and uid or (typeof(egg) == "table" and egg.Uid)
-			if typeof(eggUid) == "string" and not seen[eggUid] and typeof(egg) == "table" and egg.Placement ~= nil then
+			if typeof(eggUid) == "string" and not seen[eggUid] and typeof(egg) == "table" then
 				seen[eggUid] = true
-				-- The game checks readiness by UID, not by the serialized record.
-				-- Do not send FinishHatch until BeginHatch explicitly accepts it.
-				local ready = IsEggReadyFn == nil
-				if IsEggReadyFn then
-					pcall(function() ready = IsEggReadyFn(eggUid) == true end)
-					-- Some older client modules take the serialized record instead.
-					if not ready then pcall(function() ready = IsEggReadyFn(egg) == true end) end
-				end
-				if ready and requestEggHatchStart(eggUid) then
-					task.wait(0.08)
-					if requestEggHatchFinish(eggUid) then count += 1 end
+				-- Request every placed egg. The server rejects unready ones itself;
+				-- this avoids client-side readiness formats blocking all hatches.
+				local called, result = pcall(BeginHatchFn, eggUid)
+				if called and result ~= false then
+					task.wait(0.12)
+					local finished = pcall(FinishHatchFn, eggUid)
+					if finished then count += 1 end
 					task.wait(0.3)
 				end
 			end
@@ -3162,8 +3101,8 @@ end
 function Api.setAutoAction(name, on)
 	if autoActions[name] == nil then return false end
 	bindGame()
-	if on and name == "plant" and ((not PlantEggFn and not EggPlaceRemote) or not SaveModule) then setStatus("Auto plant unavailable"); return false end
-	if on and name == "hatch" and ((not BeginHatchFn and not EggHatchRemote) or (not FinishHatchFn and not EggFinishHatchRemote) or (not CFG.readOwnedEggs and not SaveModule)) then setStatus("Auto hatch unavailable"); return false end
+	if on and name == "plant" and (not PlantEggFn or not SaveModule) then setStatus("Auto plant unavailable"); return false end
+	if on and name == "hatch" and (not BeginHatchFn or not FinishHatchFn or (not CFG.readOwnedEggs and not SaveModule)) then setStatus("Auto hatch unavailable"); return false end
 	if on and name == "equip" and not EquipBestPetsRemote then setStatus("Auto equip unavailable"); return false end
 	if on and name == "chests" and next(CFG.chestRemotes or {}) == nil then setStatus("Auto chests unavailable"); return false end
 	autoActions[name] = on and true or false
