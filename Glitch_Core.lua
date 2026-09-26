@@ -2,7 +2,7 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V122
+  VER: V123
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
@@ -10,7 +10,7 @@
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
 ]]
 
-local GLITCH_CORE_VER = "V122"
+local GLITCH_CORE_VER = "V123"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -124,12 +124,13 @@ local function pick(mod, ...)
 	end
 end
 
--- Reference scripts operate on each UID; there is no real "HatchAll" API.
+-- Prefer exact names and exact paths. A partial match can select a status
+-- endpoint (for example FetchWearBestStatus) instead of the action endpoint.
 local function findRemoteByPathOrName(path, name)
 	for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
 		local full = obj:GetFullName():gsub("%.", "/")
 		if (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction"))
-			and (obj.Name == name or obj.Name:find(name, 1, true) or full:find(path, 1, true)) then
+			and (obj.Name == name or full:find(path, 1, true)) then
 			return obj
 		end
 	end
@@ -177,19 +178,25 @@ local function getSave()
 end
 
 local function bindGame()
-	if Bound and tick() - (CFG._lastBindAttempt or 0) < 1.5 then return true end
+	-- Binding used to wait for each optional module in sequence, creating a
+	-- 10+ second pause when one module was absent. Probe immediately and retry
+	-- quickly only until a binding succeeds; then avoid repeated full scans.
+	local sinceLastBind = tick() - (CFG._lastBindAttempt or 0)
+	if (Bound and sinceLastBind < 1.5) or (not Bound and sinceLastBind < 0.15) then
+		return Bound
+	end
 	CFG._lastBindAttempt = tick()
-	local Client = ch(ReplicatedStorage, "Client", 2)
-	local Shared = ch(ReplicatedStorage, "Shared", 2)
-	local Util = Shared and ch(Shared, "Util", 1)
-	local Data = ch(ReplicatedStorage, "Data", 2)
+	local Client = ch(ReplicatedStorage, "Client", 0)
+	local Shared = ch(ReplicatedStorage, "Shared", 0)
+	local Util = Shared and ch(Shared, "Util", 0)
+	local Data = ch(ReplicatedStorage, "Data", 0)
 
-	EggState = Client and req(Client, "Egg" .. "State", 2)
-	PlotState = Client and req(Client, "Plot" .. "State", 2)
-	CFG.hatchAnimation = Client and req(Client, "Hatch" .. "Animation", 1)
-	SaveModule = Shared and req(Shared, "Save", 2)
-	SlotIdentity = Util and req(Util, "Area" .. "Egg" .. "Slot" .. "Identity", 1)
-	AssetsData = Data and req(Data, "Assets", 2)
+	EggState = Client and req(Client, "Egg" .. "State", 0)
+	PlotState = Client and req(Client, "Plot" .. "State", 0)
+	CFG.hatchAnimation = Client and req(Client, "Hatch" .. "Animation", 0)
+	SaveModule = Shared and req(Shared, "Save", 0)
+	SlotIdentity = Util and req(Util, "Area" .. "Egg" .. "Slot" .. "Identity", 0)
+	AssetsData = Data and req(Data, "Assets", 0)
 
 	CarryFn = pick(EggState, "CarryFieldEgg", "RequestCarryAreaEgg")
 	SnapshotFn = pick(EggState, "ReadFieldEggs", "GetAreaEggSnapshot")
@@ -278,10 +285,10 @@ local function bindGame()
 		return got
 	end
 
-	local objects = ch(Workspace, "__" .. "OBJECTS", 3)
-	AreasFolder = objects and ch(objects, "Areas", 2)
-	GuardAreas = AreasFolder and ch(AreasFolder, "Guard" .. "Areas", 2)
-	AreaEggs = ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 3)
+	local objects = ch(Workspace, "__" .. "OBJECTS", 0)
+	AreasFolder = objects and ch(objects, "Areas", 0)
+	GuardAreas = AreasFolder and ch(AreasFolder, "Guard" .. "Areas", 0)
+	AreaEggs = ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 0)
 
 	if CarrySignal and typeof(CarrySignal.Connect) == "function" and not carryConn then
 		carryConn = CarrySignal:Connect(function(state)
@@ -1591,10 +1598,12 @@ local function autoPlantOwnedEggs()
 			end
 			if WearEggToolFn then pcall(WearEggToolFn, uid) end
 			task.wait(0.12)
+			if not autoActions.plant or isActuallyCarrying() then break end
 			local placedThisEgg = false
 			-- A failed position usually means that slot is occupied. Try every
 			-- placement before treating the plot as full.
 			for offset = 0, #positions - 1 do
+				if not autoActions.plant or isActuallyCarrying() then break end
 				local index = ((CFG._nextPlacementIndex or 1) + offset - 1) % #positions + 1
 				local ok, result = pcall(PlantEggFn, uid, positions[index])
 				if ok and result ~= false then
@@ -1603,6 +1612,7 @@ local function autoPlantOwnedEggs()
 					planted += 1
 					table.insert(reserved, { LocalCFrame = positions[index], Spacing = math.max(6, (tonumber(egg.AssetScale) or 1) * 4) })
 					task.wait(0.22)
+					if not autoActions.plant or isActuallyCarrying() then break end
 					break
 				end
 			end
@@ -1634,6 +1644,7 @@ local function autoHatchReadyEggs()
 			pcall(function() ready = IsEggReadyFn(egg) == true end)
 			if not ready then pcall(function() ready = IsEggReadyFn(uid) == true end) end
 			if ready then
+				if not autoActions.hatch or isActuallyCarrying() then break end
 				-- Some game builds acknowledge BeginHatch with nil instead of true;
 				-- only an explicit false is a rejection, so still send completion.
 				local ok, result = pcall(BeginHatchFn, uid)
@@ -1641,6 +1652,8 @@ local function autoHatchReadyEggs()
 					-- The animation is visual only. Running it separately lets the
 					-- server completion request for every ready egg go out immediately.
 					task.spawn(CFG.playHatchAnimation, uid, egg)
+					-- A started hatch must be completed, but no later egg is started
+					-- once the user has switched the action off.
 					pcall(FinishHatchFn, uid)
 					count += 1
 					task.wait(0.08)
@@ -1692,7 +1705,7 @@ local function runAutoActions()
 				CFG.lastPetDeployAt = tick()
 				CFG.runPetAction("deploy")
 			end
-			task.wait(0.5)
+			task.wait(0.15)
 		end
 		autoActionsBusy = false
 	end)
