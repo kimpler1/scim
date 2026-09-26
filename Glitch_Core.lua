@@ -2,7 +2,7 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V125
+  VER: V126
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
@@ -10,7 +10,7 @@
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
 ]]
 
-local GLITCH_CORE_VER = "V125"
+local GLITCH_CORE_VER = "V126"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -572,6 +572,22 @@ local function anchor(hrp, cf)
 	hrp.AssemblyAngularVelocity = Vector3.zero
 end
 
+-- The movement driver uses CFrame steps, so it must never cross a solid wall.
+-- A blocked leg is retried by the farm loop instead of forcing the character
+-- into the wall (which is lethal in the final area).
+local function wallBlocksRoute(fromPosition, toPosition)
+	if not (fromPosition and toPosition) then return false end
+	local delta = Vector3.new(toPosition.X - fromPosition.X, 0, toPosition.Z - fromPosition.Z)
+	if delta.Magnitude < 1 then return false end
+	local char = getChar()
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = char and { char } or {}
+	local origin = Vector3.new(fromPosition.X, fromPosition.Y + 2, fromPosition.Z)
+	local hit = Workspace:Raycast(origin, delta, params)
+	return hit ~= nil and hit.Instance.CanCollide and math.abs(hit.Normal.Y) < 0.7
+end
+
 -- Boblo stealMoveTo: PlatformStand OFF, walk on ground along XZ
 local function stealMoveTo(targetX, targetZ, speed, opts)
 	opts = opts or {}
@@ -586,6 +602,10 @@ local function stealMoveTo(targetX, targetZ, speed, opts)
 	local deadline = tick() + (opts.timeout or CFG.moveTimeout)
 	local spd = speed or CFG.approachSpeed
 	local elev = opts.elevated and (CFG.escapeHeight or 5) or 0
+	if wallBlocksRoute(root.Position, Vector3.new(targetX, root.Position.Y, targetZ)) then
+		setStatus("Wall route blocked")
+		return false
+	end
 
 	while tick() < deadline and autoFarm do
 		if not isAlive() then
@@ -911,6 +931,16 @@ local function eggPos(egg)
 	if part then return part.Position end
 	local ok, pivot = pcall(function() return egg:GetPivot() end)
 	if ok and pivot then return pivot.Position end
+end
+
+-- Never stand in an egg's exact world position. Some late-area eggs spawn
+-- flush against a wall, while proximity prompts still work a few studs away.
+local function eggStandPosition(position, fromPosition)
+	if not (position and fromPosition) then return position end
+	local away = Vector3.new(fromPosition.X - position.X, 0, fromPosition.Z - position.Z)
+	if away.Magnitude < 1 then return position end
+	local distance = math.min(7, math.max(0, away.Magnitude - 2))
+	return Vector3.new(position.X + away.Unit.X * distance, position.Y, position.Z + away.Unit.Z * distance)
 end
 
 local function recordsByUid()
@@ -1398,12 +1428,15 @@ local function trySteal(egg)
 	local root = getHRP()
 	if not root or not pos then return false end
 
-	local targetY = groundedY(pos.X, pos.Z, pos.Y)
-	anchor(root, CFrame.new(pos.X, targetY, pos.Z))
+	local stand = eggStandPosition(pos, root.Position)
+	local targetY = groundedY(stand.X, stand.Z, stand.Y)
+	anchor(root, CFrame.new(stand.X, targetY, stand.Z))
 	task.wait(0.12)
 	root = getHRP()
 	if root then
-		anchor(root, CFrame.new(pos.X, targetY, pos.Z))
+		stand = eggStandPosition(pos, root.Position)
+		targetY = groundedY(stand.X, stand.Z, stand.Y)
+		anchor(root, CFrame.new(stand.X, targetY, stand.Z))
 	end
 
 	setStatus("Grab spam")
@@ -1832,7 +1865,8 @@ local function approachAndSteal(egg, speed)
 	lastEggPos = pos
 	setStatus("Reclaim")
 	if isDowned() then recoverStand() end
-	if not stealAlong(buildStealPath(hrp.Position, pos), speed or CFG.approachSpeed) then
+	local stand = eggStandPosition(pos, hrp.Position)
+	if not stealAlong(buildStealPath(hrp.Position, stand), speed or CFG.approachSpeed) then
 		return false
 	end
 	setStatus("Grab")
@@ -1897,8 +1931,9 @@ local function guardHitThenRegrab(egg, keepGoing)
 
 	local hrp = getHRP()
 	if hrp and (hrp.Position - pos).Magnitude > 14 then
-		local y = groundedY(pos.X, pos.Z, pos.Y)
-		anchor(hrp, CFrame.new(pos.X, y, pos.Z))
+		local stand = eggStandPosition(pos, hrp.Position)
+		local y = groundedY(stand.X, stand.Z, stand.Y)
+		anchor(hrp, CFrame.new(stand.X, y, stand.Z))
 		task.wait(0.3)
 	end
 
@@ -2392,7 +2427,8 @@ local function farmOnce()
 	local pos = eggPos(egg)
 	hrp = getHRP()
 	setStatus("Approach")
-	if not hrp or not pos or not stealAlong(buildStealPath(hrp.Position, pos), CFG.approachSpeed) then
+	local stand = hrp and pos and eggStandPosition(pos, hrp.Position)
+	if not hrp or not stand or not stealAlong(buildStealPath(hrp.Position, stand), CFG.approachSpeed) then
 		setStatus("Approach abort")
 		return
 	end
