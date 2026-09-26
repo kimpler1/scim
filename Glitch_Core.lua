@@ -2,7 +2,7 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V123
+  VER: V124
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
@@ -10,7 +10,7 @@
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
 ]]
 
-local GLITCH_CORE_VER = "V123"
+local GLITCH_CORE_VER = "V124"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -180,11 +180,10 @@ end
 local function bindGame()
 	-- Binding used to wait for each optional module in sequence, creating a
 	-- 10+ second pause when one module was absent. Probe immediately and retry
-	-- quickly only until a binding succeeds; then avoid repeated full scans.
+	-- quickly only until a binding succeeds; never rescan remotes while bound.
+	if Bound then return true end
 	local sinceLastBind = tick() - (CFG._lastBindAttempt or 0)
-	if (Bound and sinceLastBind < 1.5) or (not Bound and sinceLastBind < 0.15) then
-		return Bound
-	end
+	if sinceLastBind < 0.15 then return false end
 	CFG._lastBindAttempt = tick()
 	local Client = ch(ReplicatedStorage, "Client", 0)
 	local Shared = ch(ReplicatedStorage, "Shared", 0)
@@ -1579,7 +1578,7 @@ local function plotPlacementCFrames(egg, owned, reserved)
 end
 
 local function autoPlantOwnedEggs()
-	if not PlantEggFn or isActuallyCarrying() then return 0 end
+	if not PlantEggFn then return 0 end
 	if not isInPlot() then
 		setStatus("Auto plant: stand in base")
 		return 0
@@ -1587,32 +1586,50 @@ local function autoPlantOwnedEggs()
 	local planted = 0
 	local owned = CFG.ownedEggRecords()
 	local reserved = {}
+	local holding = isActuallyCarrying()
+	local heldUid
+	if holding then
+		local char = getChar()
+		for _, item in ipairs(char and char:GetChildren() or {}) do
+			if item:IsA("Tool") or item:IsA("Model") then
+				local uid = item:GetAttribute("Uid") or item:GetAttribute("EggUid")
+				if typeof(uid) == "string" then heldUid = uid break end
+			end
+		end
+	end
 	for _, entry in ipairs(owned) do
-		if not autoActions.plant or isActuallyCarrying() then break end
+		if not autoActions.plant then break end
 		local uid, egg = entry.uid, entry.egg
-		if typeof(uid) == "string" and typeof(egg) == "table" and egg.Placement == nil and not egg.Locked then
+		if typeof(uid) == "string" and typeof(egg) == "table" and egg.Placement == nil and not egg.Locked
+			and (not heldUid or uid == heldUid) then
 			local positions = plotPlacementCFrames(egg, owned, reserved)
 			if #positions == 0 then
 				setStatus("Auto plant: plot full")
 				break
 			end
-			if WearEggToolFn then pcall(WearEggToolFn, uid) end
-			task.wait(0.12)
-			if not autoActions.plant or isActuallyCarrying() then break end
+			if not holding and WearEggToolFn then
+				pcall(WearEggToolFn, uid)
+				task.wait(0.12)
+				if not autoActions.plant then break end
+			end
 			local placedThisEgg = false
 			-- A failed position usually means that slot is occupied. Try every
 			-- placement before treating the plot as full.
-			for offset = 0, #positions - 1 do
-				if not autoActions.plant or isActuallyCarrying() then break end
+			-- If the held tool has no UID attribute, test one slot per inventory
+			-- record instead of blocking on every slot for the wrong egg UID.
+			local attemptCount = (holding and not heldUid) and 1 or #positions
+			for offset = 0, attemptCount - 1 do
+				if not autoActions.plant then break end
 				local index = ((CFG._nextPlacementIndex or 1) + offset - 1) % #positions + 1
 				local ok, result = pcall(PlantEggFn, uid, positions[index])
 				if ok and result ~= false then
 					placedThisEgg = true
 					CFG._nextPlacementIndex = index % #positions + 1
 					planted += 1
+					holding, heldUid = false, nil
 					table.insert(reserved, { LocalCFrame = positions[index], Spacing = math.max(6, (tonumber(egg.AssetScale) or 1) * 4) })
 					task.wait(0.22)
-					if not autoActions.plant or isActuallyCarrying() then break end
+					if not autoActions.plant then break end
 					break
 				end
 			end
@@ -1705,7 +1722,7 @@ local function runAutoActions()
 				CFG.lastPetDeployAt = tick()
 				CFG.runPetAction("deploy")
 			end
-			task.wait(0.15)
+			task.wait(0.35)
 		end
 		autoActionsBusy = false
 	end)
