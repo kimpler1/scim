@@ -2,7 +2,7 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V130
+  VER: V131
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
@@ -10,7 +10,7 @@
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
 ]]
 
-local GLITCH_CORE_VER = "V130"
+local GLITCH_CORE_VER = "V131"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -64,9 +64,7 @@ local CFG = {
 	acInstalled = false,
 	acStatus = "off",
 	antiKnockbackOn = false,
-	antiKnockbackConn = nil,
-	antiKnockbackSafeCFrame = nil,
-	antiKnockbackWasRagdolled = false,
+	antiKnockbackConns = {},
 	status = function() end,
 }
 
@@ -576,55 +574,62 @@ local function anchor(hrp, cf)
 	hrp.AssemblyAngularVelocity = Vector3.zero
 end
 
--- Standalone anti-knockback reacts only to an actual impact. It never holds
--- the character's CFrame during ordinary walking, which would feel like an
--- invisible wall.
-local function setAntiKnockback(on)
-	CFG.antiKnockbackOn = on and true or false
-	if not CFG.antiKnockbackOn then
-		if CFG.antiKnockbackConn then
-			pcall(function() CFG.antiKnockbackConn:Disconnect() end)
-			CFG.antiKnockbackConn = nil
-		end
-		CFG.antiKnockbackSafeCFrame = nil
-		CFG.antiKnockbackWasRagdolled = false
-		return
+-- Standalone anti-knockback is event-driven.  Velocity and displacement are
+-- deliberately not used here: both are normal while flying or moving quickly.
+-- We react only to a damage event or to the game taking movement control away.
+local function clearAntiKnockbackConnections()
+	for _, conn in ipairs(CFG.antiKnockbackConns) do
+		pcall(function() conn:Disconnect() end)
 	end
-	local root = getHRP()
-	if root then CFG.antiKnockbackSafeCFrame = root.CFrame end
-	if CFG.antiKnockbackConn then return end
-	CFG.antiKnockbackConn = RunService.Heartbeat:Connect(function()
-		if not CFG.antiKnockbackOn then return end
-		local hrp, hum = getHRP(), getHum()
-		if not (hrp and hum and hum.Health > 0) then return end
-		local safe = CFG.antiKnockbackSafeCFrame
-		local velocity = hrp.AssemblyLinearVelocity
-		local state = hum:GetState()
-		local ragdolled = not flyOn and (hum.PlatformStand or hum.Sit
-			or state == Enum.HumanoidStateType.Physics
-			or state == Enum.HumanoidStateType.Ragdoll
-			or state == Enum.HumanoidStateType.FallingDown)
-		local launched = velocity.Magnitude > 100
-		local displaced = safe and (hrp.Position - safe.Position).Magnitude > 32
-		local newRagdoll = ragdolled and not CFG.antiKnockbackWasRagdolled
-		CFG.antiKnockbackWasRagdolled = ragdolled
-		-- Handle the transition into ragdoll once.  Reapplying this every
-		-- heartbeat can fight normal player movement on games that briefly
-		-- report Physics while walking.
-		if launched or displaced or newRagdoll then
-			if safe and displaced then hrp.CFrame = safe end
+	CFG.antiKnockbackConns = {}
+end
+
+local function bindAntiKnockback()
+	clearAntiKnockbackConnections()
+	if not CFG.antiKnockbackOn then return end
+
+	local hum = getHum()
+	if not hum then return end
+	local lastHealth = hum.Health
+	local function stopImpact(restoreControl)
+		-- Fly uses PlatformStand and high velocity by design, so this feature must
+		-- never change either one while flight is active.
+		if not CFG.antiKnockbackOn or flyOn then return end
+		local hrp = getHRP()
+		if hrp then
 			hrp.AssemblyLinearVelocity = Vector3.zero
 			hrp.AssemblyAngularVelocity = Vector3.zero
-			if ragdolled and not flyOn then
-				hum.PlatformStand = false
-				hum.Sit = false
-				if newRagdoll then pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end) end
-			end
-			return
 		end
-		CFG.antiKnockbackSafeCFrame = hrp.CFrame
-	end)
-	table.insert(connections, CFG.antiKnockbackConn)
+		if restoreControl then
+			hum.PlatformStand = false
+			hum.Sit = false
+			pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+			pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+		end
+	end
+
+	table.insert(CFG.antiKnockbackConns, hum.HealthChanged:Connect(function(health)
+		if health < lastHealth then stopImpact(false) end
+		lastHealth = health
+	end))
+	table.insert(CFG.antiKnockbackConns, hum.StateChanged:Connect(function(_, state)
+		if state == Enum.HumanoidStateType.Physics
+			or state == Enum.HumanoidStateType.Ragdoll
+			or state == Enum.HumanoidStateType.FallingDown then
+			stopImpact(true)
+		end
+	end))
+	table.insert(CFG.antiKnockbackConns, hum:GetPropertyChangedSignal("PlatformStand"):Connect(function()
+		if hum.PlatformStand then stopImpact(true) end
+	end))
+	table.insert(CFG.antiKnockbackConns, hum:GetPropertyChangedSignal("Sit"):Connect(function()
+		if hum.Sit then stopImpact(true) end
+	end))
+end
+
+local function setAntiKnockback(on)
+	CFG.antiKnockbackOn = on and true or false
+	bindAntiKnockback()
 end
 
 -- The movement driver uses CFrame steps, so it must never cross a solid wall.
@@ -3427,8 +3432,7 @@ end
 LP.CharacterAdded:Connect(function()
 	task.wait(0.45)
 	if CFG.antiKnockbackOn then
-		local hrp = getHRP()
-		if hrp then CFG.antiKnockbackSafeCFrame = hrp.CFrame end
+		bindAntiKnockback()
 	end
 	if autoFarm then
 		swapStealHumanoid()
