@@ -67,7 +67,9 @@ do
 	end
 end
 
--- 3) Log remotes the hub fires (steal / move signals)
+-- 3) Log remotes used for eggs and pet equip/unequip actions.
+-- Run this before manually returning one pet through the game's own UI; the
+-- executor console will print the exact endpoint and arguments to reproduce.
 do
 	local mt = getrawmetatable and getrawmetatable(game)
 	if mt and typeof(hookmetamethod) == "function" then
@@ -76,7 +78,16 @@ do
 			local method = getnamecallmethod()
 			if method == "FireServer" or method == "InvokeServer" then
 				local name = self:GetFullName()
-				if name:find("Egg", 1, true) or name:find("Carry", 1, true) or name:find("Field", 1, true) then
+				local watched = name:find("Egg", 1, true)
+					or name:find("Carry", 1, true)
+					or name:find("Field", 1, true)
+					or name:find("Pet", 1, true)
+					or name:find("Haul", 1, true)
+					or name:find("Pen", 1, true)
+					or name:find("Wear", 1, true)
+					or name:find("Doff", 1, true)
+					or name:find("Unequip", 1, true)
+				if watched then
 					local args = { ... }
 					local line = os.date("%H:%M:%S") .. " " .. method .. " " .. name
 					for i, a in ipairs(args) do
@@ -88,7 +99,7 @@ do
 			end
 			return oldNamecall(self, ...)
 		end))
-		print(TAG, "hooked remotes (Egg/Carry/Field)")
+		print(TAG, "hooked remotes (Egg/Pet/Haul/Pen)")
 	else
 		warn(TAG, "namecall hook unavailable — skip remotes")
 	end
