@@ -2,7 +2,7 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V119
+  VER: V120
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
@@ -10,7 +10,7 @@
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
 ]]
 
-local GLITCH_CORE_VER = "V119"
+local GLITCH_CORE_VER = "V120"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -1695,6 +1695,41 @@ CFG.runPetAction = function(action)
 	return ok
 end
 
+-- Record the real request made when a player manually takes a pet back through
+-- the game's UI. This only writes to the panel log; it never changes a pet.
+CFG.installPetRemoteMonitor = function()
+	if CFG.petRemoteMonitorInstalled then return end
+	if typeof(hookmetamethod) ~= "function" or typeof(getnamecallmethod) ~= "function" then
+		setStatus("Pet trace unavailable in this executor")
+		return
+	end
+	local oldNamecall
+	local ok = pcall(function()
+		oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+			local method = getnamecallmethod()
+			if method == "FireServer" or method == "InvokeServer" then
+				local okName, fullName = pcall(function() return self:GetFullName() end)
+				local name = okName and tostring(fullName) or tostring(self)
+				if name:find("Pet", 1, true) or name:find("Haul", 1, true)
+					or name:find("Pen", 1, true) or name:find("Wear", 1, true)
+					or name:find("Doff", 1, true) or name:find("Unequip", 1, true) then
+					local args = table.pack(...)
+					local detail = args.n > 0 and (" #1=" .. tostring(args[1])) or ""
+					CFG.lastPetRemoteTrace = method .. " " .. name .. detail
+					setStatus("Pet trace: " .. CFG.lastPetRemoteTrace)
+				end
+			end
+			return oldNamecall(self, ...)
+		end))
+	end)
+	if ok then
+		CFG.petRemoteMonitorInstalled = true
+		setStatus("Pet trace armed — return one pet manually")
+	else
+		setStatus("Pet trace unavailable: " .. tostring(oldNamecall))
+	end
+end
+
 local function runAutoActions()
 	if autoActionsBusy then return end
 	autoActionsBusy = true
@@ -3213,6 +3248,7 @@ function Api.setConfig(t)
 	if t.targetMode == "all" or t.targetMode == "best" or t.targetMode == "dropped" or t.targetMode == "carrier" then CFG.targetMode = t.targetMode end
 	if t.carrierFollowDistance then CFG.carrierFollowDistance = math.clamp(t.carrierFollowDistance, 2, 8) end
 	if typeof(t.status) == "function" then CFG.status = t.status end
+	CFG.installPetRemoteMonitor()
 end
 
 function Api.startFarm()
