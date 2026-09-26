@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V124
+  VER: V125
 ]]
 
-local GLITCH_UI_VER = "V124"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v124"
+local GLITCH_UI_VER = "V125"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v125"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -56,8 +56,7 @@ local approachSpeed, escapeSpeed = 250, 480
 local walkSpeedVal, flySpeedVal = 32, 60
 local autoOn = false
 local coreApi, coreLoaded = nil, false
-local statusLbl, biomeLbl
-local debugLines = {}
+local biomeLbl
 local pages = {}
 local navBtns = {}
 local currentPage = "General"
@@ -187,12 +186,10 @@ local function clearPreviousPanels()
 	end
 end
 
-local function setStatus(t)
-	local text = tostring(t)
-	table.insert(debugLines, text)
-	while #debugLines > 6 do table.remove(debugLines, 1) end
-	if statusLbl then statusLbl.Text = table.concat(debugLines, "\n") end
-end
+-- The panel is intentionally silent: the temporary debug console was removed
+-- after V124 verification. The core can keep reporting status through this
+-- no-op callback without changing the working automation code.
+local function setStatus(_) end
 
 local function setBiomeLabel()
 	if biomeLbl then
@@ -853,20 +850,6 @@ local mainPage = makePage("Main")
 local espPage = makePage("ESP")
 local playerPage = makePage("Player")
 local autoPage = makePage("Auto")
-
-local autoStatusRow = glassRow(autoPage, 102)
-statusLbl = Instance.new("TextLabel")
-statusLbl.BackgroundTransparency = 1
-statusLbl.Position = UDim2.fromOffset(8, 5)
-statusLbl.Size = UDim2.new(1, -16, 1, -10)
-statusLbl.Font = Enum.Font.Gotham
-statusLbl.TextSize = 11
-statusLbl.TextColor3 = MUTED
-statusLbl.TextWrapped = true
-statusLbl.TextXAlignment = Enum.TextXAlignment.Left
-statusLbl.TextYAlignment = Enum.TextYAlignment.Top
-statusLbl.Text = "V" .. GLITCH_UI_VER .. " · Core loads when a feature is enabled"
-statusLbl.Parent = autoStatusRow
 
 navItem("General", "General")
 navItem("Main", "Main")
