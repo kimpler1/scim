@@ -2,7 +2,7 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V118
+  VER: V119
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
@@ -10,7 +10,7 @@
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
 ]]
 
-local GLITCH_CORE_VER = "V118"
+local GLITCH_CORE_VER = "V119"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -58,6 +58,11 @@ local CFG = {
 	targetMode = "all",
 	carrierFollowDistance = 3.5,
 	petActionInterval = 5,
+	petActionBusy = { deploy = false, recall = false },
+	lastScanInfo = "slots=0 snap=0",
+	lastBestInfo = "",
+	acInstalled = false,
+	acStatus = "off",
 	status = function() end,
 }
 
@@ -69,9 +74,8 @@ local GetRespawn, GetPlot, InPlot, IsFirstUid, BuildSlotKey
 local AreasFolder, GuardAreas, AreaEggs
 local Bound = false
 local autoFarm, carrying, farmBusy = false, false, false
-local autoActions = { plant = false, hatch = false, deploy = false, collect = false }
+local autoActions = { plant = false, hatch = false, deploy = false, recall = false }
 local autoActionsBusy = false
-local petActionBusy = { deploy = false, collect = false }
 local connections = {}
 local espFlags = { players = false, eggs = false, beasts = false }
 local espMap = {} -- [key] = { hl, bb, label, kind }
@@ -90,10 +94,6 @@ local deliverAssistConn = nil
 local deliverAssistBusy = false
 local stealValidated = false
 local wasCarryingEdge = false
-local acInstalled = false
-local acStatus = "off"
-local lastScanInfo = "slots=0 snap=0"
-local lastBestInfo = ""
 
 local function setStatus(t)
 	CFG.status(t)
@@ -185,6 +185,7 @@ local function bindGame()
 	local Data = ch(ReplicatedStorage, "Data", 2)
 
 	EggState = Client and req(Client, "Egg" .. "State", 2)
+	local HaulState = Client and (req(Client, "Haul" .. "State", 1) or req(Client, "Pet" .. "State", 1))
 	PlotState = Client and req(Client, "Plot" .. "State", 2)
 	CFG.hatchAnimation = Client and req(Client, "Hatch" .. "Animation", 1)
 	SaveModule = Shared and req(Shared, "Save", 2)
@@ -206,6 +207,7 @@ local function bindGame()
 	WearEggToolFn = pick(EggState, "WearEggTool", "RequestEquipTool")
 	PlantEggFn = pick(EggState, "PlantEgg", "RequestPlaceEgg")
 	CFG.readOwnedEggsFn = pick(EggState, "ReadOwnerEggs", "ReadOwnedEggs", "GetOwnedEggs", "ReadLocalEggs")
+	CFG.recallPetsFn = pick(HaulState, "DoffAll", "UnequipAll", "RecallAll", "ReturnAllPets")
 
 	local placeRemote = CFG.findEggWorldRemote("AskPlaceEgg", "PlaceEgg")
 	local wearRemote = CFG.findEggWorldRemote("AskWearTool", "WearEggTool")
@@ -228,7 +230,16 @@ local function bindGame()
 
 	EquipBestPetsRemote = findRemoteByPathOrName("RF/Haul/WearBest", "WearBest")
 		or findRemoteByPathOrName("RF/PenRoster/ConfirmEquipBestBadge", "ConfirmEquipBestBadge")
-	CFG.collectPetEarningsRemote = findRemoteByPathOrName("RF/AwayEarnings/AskCollect", "AwayEarnings/AskCollect")
+	CFG.recallPetsRemote = nil
+	for _, remoteSpec in ipairs({
+		{ "RF/Haul/DoffAll", "DoffAll" },
+		{ "RF/Haul/UnequipAll", "UnequipAll" },
+		{ "RF/Haul/RecallAll", "RecallAll" },
+		{ "RF/PenRoster/DoffAll", "DoffAll" },
+	}) do
+		CFG.recallPetsRemote = findRemoteByPathOrName(remoteSpec[1], remoteSpec[2])
+		if CFG.recallPetsRemote then break end
+	end
 	BatSwingRemote = findRemoteByPathOrName("BatSwing/Trigger", "BatSwing")
 
 	-- Oxide: Packages.Networking["RF/EggWorld/AskFieldEggCarry"]
@@ -294,7 +305,7 @@ local function bindGame()
 	end
 
 	Bound = EggState ~= nil or PlantEggFn ~= nil or BeginHatchFn ~= nil or EquipBestPetsRemote ~= nil
-		or CFG.collectPetEarningsRemote ~= nil
+		or CFG.recallPetsFn ~= nil or CFG.recallPetsRemote ~= nil
 	return Bound
 end
 
@@ -1104,10 +1115,10 @@ local function bestEggInBiome()
 		local mutations = bestRecord and typeof(bestRecord.Mutations) == "table" and bestRecord.Mutations or {}
 		local mutationText = #mutations > 0 and (" + " .. table.concat(mutations, ",")) or ""
 		local scale = bestRecord and tonumber(bestRecord.AssetScale) or 1
-		lastBestInfo = ("%s · %s · x%.2f%s"):format(
+		CFG.lastBestInfo = ("%s · %s · x%.2f%s"):format(
 			tostring(bestRecord and bestRecord.AssetCategory or "Egg"), tostring(bestRarity), scale, mutationText
 		)
-		setStatus("Best " .. lastBestInfo)
+		setStatus("Best " .. CFG.lastBestInfo)
 		return best
 	end
 	return nearestEggInBiome()
@@ -1125,7 +1136,7 @@ nearestEggInBiome = function()
 	local slotCount = AreaEggs and #AreaEggs:GetChildren() or 0
 	local snapCount = 0
 	for _ in pairs(recs) do snapCount = snapCount + 1 end
-	lastScanInfo = ("slots=%d snap=%d"):format(slotCount, snapCount)
+	CFG.lastScanInfo = ("slots=%d snap=%d"):format(slotCount, snapCount)
 	local best, bestDist
 	local fallback, fallbackDist
 	if AreaEggs then
@@ -1653,24 +1664,28 @@ local function autoHatchReadyEggs()
 	return count
 end
 
--- These endpoints are confirmed separately from egg handling. "WearBest"
--- places/equips the server's best available pets; "AskCollect" claims only
--- their accumulated earnings. Neither endpoint sells or deletes a pet.
+-- "WearBest" equips the server's best pets.  Recall uses only an explicit
+-- Doff/Unequip/Recall-all game endpoint; it never sells or deletes a pet.
 CFG.runPetAction = function(action)
-	if action ~= "deploy" and action ~= "collect" then return false end
-	if petActionBusy[action] then return false end
-	local remote = action == "deploy" and EquipBestPetsRemote or CFG.collectPetEarningsRemote
-	local title = action == "deploy" and "Deploy best pets" or "Collect pet earnings"
-	if not remote then
+	if action ~= "deploy" and action ~= "recall" then return false end
+	if CFG.petActionBusy[action] then return false end
+	local remote = action == "deploy" and EquipBestPetsRemote or CFG.recallPetsRemote
+	local title = action == "deploy" and "Deploy best pets" or "Recall all pets"
+	if not remote and not (action == "recall" and CFG.recallPetsFn) then
 		setStatus(title .. ": game API not found")
 		return false
 	end
-	-- Both endpoints are zero-argument RemoteFunctions.  Passing a made-up
-	-- payload to AskCollect makes the server reject an otherwise valid request.
-	petActionBusy[action] = true
-	local ok = invokeRemote(remote)
-	petActionBusy[action] = false
-	local via = CFG.describeRemote(remote)
+	CFG.petActionBusy[action] = true
+	local ok, via
+	if action == "recall" and CFG.recallPetsFn then
+		local ran, result = pcall(CFG.recallPetsFn)
+		ok = ran and result ~= false
+		via = "Client pet module"
+	else
+		ok = invokeRemote(remote)
+		via = CFG.describeRemote(remote)
+	end
+	CFG.petActionBusy[action] = false
 	if ok then
 		setStatus(title .. ": sent via " .. via)
 	else
@@ -1684,7 +1699,7 @@ local function runAutoActions()
 	if autoActionsBusy then return end
 	autoActionsBusy = true
 	task.spawn(function()
-		while autoActions.plant or autoActions.hatch or autoActions.deploy or autoActions.collect do
+		while autoActions.plant or autoActions.hatch or autoActions.deploy or autoActions.recall do
 			bindGame()
 			if autoActions.plant then
 				local n = autoPlantOwnedEggs()
@@ -1698,9 +1713,9 @@ local function runAutoActions()
 				CFG.lastPetDeployAt = tick()
 				CFG.runPetAction("deploy")
 			end
-			if autoActions.collect and tick() - (CFG.lastPetCollectAt or 0) >= CFG.petActionInterval then
-				CFG.lastPetCollectAt = tick()
-				CFG.runPetAction("collect")
+			if autoActions.recall and tick() - (CFG.lastPetRecallAt or 0) >= CFG.petActionInterval then
+				CFG.lastPetRecallAt = tick()
+				CFG.runPetAction("recall")
 			end
 			task.wait(3.0)
 		end
@@ -2362,7 +2377,7 @@ local function farmOnce()
 		if not egg then
 			-- Treat an empty client scan as transient: the slot list may still be
 			-- syncing after a failed steal. Never stop the farm on this condition.
-			setStatus("Rescan " .. biome .. " " .. lastScanInfo)
+			setStatus("Rescan " .. biome .. " " .. CFG.lastScanInfo)
 			AreaEggs = nil
 			task.wait(1.0)
 			return
@@ -2911,12 +2926,12 @@ local function hardenCharacterSignals()
 end
 
 local function installClientAc()
-	if acInstalled then
+	if CFG.acInstalled then
 		hardenCharacterSignals()
 		scrubIntegrityTables()
-		return acStatus
+		return CFG.acStatus
 	end
-	acInstalled = true
+	CFG.acInstalled = true
 	local parts = {}
 
 	-- Oxide Layer1-ish: freeze detection tables via filtergc if present
@@ -2968,8 +2983,8 @@ local function installClientAc()
 		table.insert(parts, "newindex")
 	end)
 
-	acStatus = table.concat(parts, "+")
-	return acStatus
+	CFG.acStatus = table.concat(parts, "+")
+	return CFG.acStatus
 end
 
 local function applyWalkSpeed()
@@ -3235,12 +3250,12 @@ function Api.setAutoAction(name, on)
 		local waiting = (name == "plant" and not PlantEggFn)
 			or (name == "hatch" and (not IsEggReadyFn or not BeginHatchFn or not FinishHatchFn))
 			or (name == "deploy" and not EquipBestPetsRemote)
-			or (name == "collect" and not CFG.collectPetEarningsRemote)
+			or (name == "recall" and not CFG.recallPetsFn and not CFG.recallPetsRemote)
 		setStatus(waiting and ("Auto " .. name .. " waiting for game API") or ("Auto " .. name .. " on"))
 		-- Pet actions must not wait for a potentially long plant/hatch scan.
-		-- One server request handles the complete equipped/earnings collection.
-		if not waiting and (name == "deploy" or name == "collect") then
-			if name == "deploy" then CFG.lastPetDeployAt = tick() else CFG.lastPetCollectAt = tick() end
+		-- One game request handles the complete equip or recall operation.
+		if not waiting and (name == "deploy" or name == "recall") then
+			if name == "deploy" then CFG.lastPetDeployAt = tick() else CFG.lastPetRecallAt = tick() end
 			task.spawn(function()
 				if autoActions[name] then CFG.runPetAction(name) end
 			end)
