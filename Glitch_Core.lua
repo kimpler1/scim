@@ -2,7 +2,7 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V126
+  VER: V128
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
@@ -10,7 +10,7 @@
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
 ]]
 
-local GLITCH_CORE_VER = "V126"
+local GLITCH_CORE_VER = "V128"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -46,7 +46,7 @@ local CFG = {
 	arriveDist = 1.35,
 	grabDelay = 1.6,
 	moveTimeout = 14,
-	baseWait = 3.0,
+	baseWait = 4.0,
 	escapeHeight = 10,
 	carryGrace = 0.25,
 	reclaimRadius = 250,
@@ -1281,13 +1281,13 @@ local function visibleDroppedCandidates(knownUids)
 	return found, anonymous
 end
 
--- Recovery mode requires both a Dropped record and a visible, out-of-nest
--- pickup object. Higher zone index wins first; rarity/mutation/size choose
--- between drops in the same zone, then distance breaks a remaining tie.
+-- Recovery mode stays in the biome selected in the panel. It requires both a
+-- Dropped record and a visible, out-of-nest pickup object.
 local function findDroppedEggGlobal()
 	AreaEggs = ch(Workspace, "Area" .. "Egg" .. "Slots" .. "Client", 3)
 	local hrp = getHRP()
 	if not hrp then return nil end
+	local biome = CFG.biomes[CFG.biomeIndex]
 	local recs = recordsByUid()
 	local visible, anonymous = visibleDroppedCandidates(recs)
 	local best, bestScore, bestZone
@@ -1297,36 +1297,31 @@ local function findDroppedEggGlobal()
 			if not candidate then
 				continue
 			end
-			local zoneIndex = 0
-			for i, biomeName in ipairs(CFG.biomes) do
-				if matchesBiome(rec.AreaId, biomeName) then
-					zoneIndex = i
-					break
-				end
+			local inBounds = isInsideBiomeBounds(candidate.Position, biome)
+			local matchesArea = matchesBiome(rec.AreaId, biome)
+			if inBounds ~= true and not (matchesArea and inBounds ~= false)
+				and not (inBounds == nil and nearBiomeCenter(candidate.Position, biome)) then
+				continue
 			end
 			local eggScore = bestEggScore(rec, (candidate.Position - hrp.Position).Magnitude)
-			local score = zoneIndex * 1000000000000 + eggScore
+			local score = eggScore
 			if not bestScore or score > bestScore then
-				best, bestScore, bestZone = candidate, score, zoneIndex
+				best, bestScore, bestZone = candidate, score, CFG.biomeIndex
 			end
 		end
 	end
 	-- Some dropped objects are intentionally client-only and have no exposed UID.
 	-- They are still safe to collect because their own pickup prompt is outside
-	-- the nest-slot folder.  Use position to keep the end-of-map-first rule.
+	-- the nest-slot folder. Keep only candidates in the selected biome.
 	if not best then
 		for _, candidate in ipairs(anonymous) do
-			local zoneIndex = 0
-			for i = #CFG.biomes, 1, -1 do
-				local boundsInside = isInsideBiomeBounds(candidate.Position, CFG.biomes[i])
-				if boundsInside == true or nearBiomeCenter(candidate.Position, CFG.biomes[i]) then
-					zoneIndex = i
-					break
-				end
+			local boundsInside = isInsideBiomeBounds(candidate.Position, biome)
+			if boundsInside ~= true and not (boundsInside == nil and nearBiomeCenter(candidate.Position, biome)) then
+				continue
 			end
-			local score = zoneIndex * 1000000000000 - (candidate.Position - hrp.Position).Magnitude
+			local score = -(candidate.Position - hrp.Position).Magnitude
 			if not bestScore or score > bestScore then
-				best, bestScore, bestZone = candidate, score, zoneIndex
+				best, bestScore, bestZone = candidate, score, CFG.biomeIndex
 			end
 		end
 	end
@@ -1783,19 +1778,18 @@ local function returnToBase(speed, opts)
 	return stealAlong(buildStealPath(hrp.Position, base), speed, opts)
 end
 
--- The game's streamed area and its movement lane are not reliable while the
--- player is still inside their plot.  Leave the base first, without selecting
--- an egg, so every farm mode can scan and travel immediately afterwards.
-local function leaveBaseForFarm()
+-- After a delivery go directly to the selected biome. The old Forest staging
+-- leg could make the farm take an unrelated first-biome egg between runs.
+local function leaveBaseForFarm(biome)
 	local hrp = getHRP()
 	local base = getBasePos()
 	if not (hrp and base) then return false end
 	local atBase = isInPlot() or (hrp.Position - base).Magnitude <= 85
 	if not atBase then return true end
-	local forest = getBiomeCenter("Forest") or BIOME_CENTERS.Forest
-	if not forest then return true end
-	setStatus("Leave base -> Forest")
-	return stealAlong(buildStealPath(hrp.Position, forest), CFG.approachSpeed)
+	local destination = getBiomeCenter(biome)
+	if not destination then return true end
+	setStatus("Leave base -> " .. tostring(biome))
+	return stealAlong(buildStealPath(hrp.Position, destination), CFG.approachSpeed)
 end
 
 local function findEggByUid(uid)
@@ -2368,14 +2362,12 @@ local function farmOnce()
 
 	if carrying then
 		peelThenEscape()
+		if isInPlot() then plantCarriedEggs() end
 		local untilT = tick() + CFG.baseWait
 		while tick() < untilT and autoFarm do
-			if isInPlot() then
+			if isInPlot() and isActuallyCarrying() then
 				plantCarriedEggs()
-				if not carrying then break end
 			end
-			if not carrying then break end
-			refreshCarry()
 			RunService.Heartbeat:Wait()
 		end
 		if isInPlot() then plantCarriedEggs() end
@@ -2388,12 +2380,12 @@ local function farmOnce()
 		return
 	end
 
-	if not leaveBaseForFarm() then
+	local biome = CFG.biomes[CFG.biomeIndex]
+	if not leaveBaseForFarm(biome) then
 		setStatus("Base exit abort")
 		return
 	end
 
-	local biome = CFG.biomes[CFG.biomeIndex]
 	local egg
 	if CFG.targetMode == "dropped" then
 		egg = findDroppedEggGlobal()
@@ -2476,17 +2468,15 @@ local function farmOnce()
 	end
 
 	setStatus("Bank")
-	local bankUntil = tick() + CFG.baseWait + 2
+	if isInPlot() then plantCarriedEggs() end
+	local bankUntil = tick() + CFG.baseWait
 	while tick() < bankUntil and autoFarm do
-		refreshCarry()
-		if isInPlot() then
+		if isInPlot() and isActuallyCarrying() then
 			local n = plantCarriedEggs()
 			if n > 0 then
 				setStatus("Planted " .. tostring(n))
 			end
-			if not carrying then break end
 		end
-		if not carrying then break end
 		RunService.Heartbeat:Wait()
 	end
 	if isInPlot() then
