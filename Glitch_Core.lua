@@ -2,7 +2,7 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V132
+  VER: V128
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
@@ -10,7 +10,7 @@
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
 ]]
 
-local GLITCH_CORE_VER = "V132"
+local GLITCH_CORE_VER = "V128"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -63,9 +63,6 @@ local CFG = {
 	lastBestInfo = "",
 	acInstalled = false,
 	acStatus = "off",
-	antiKnockbackOn = false,
-	antiKnockbackConns = {},
-	antiKnockbackBrakeConn = nil,
 	status = function() end,
 }
 
@@ -573,93 +570,6 @@ local function anchor(hrp, cf)
 	hrp.CFrame = cf
 	hrp.AssemblyLinearVelocity = Vector3.zero
 	hrp.AssemblyAngularVelocity = Vector3.zero
-end
-
--- Standalone anti-knockback is event-driven.  Velocity and displacement are
--- deliberately not used here: both are normal while flying or moving quickly.
--- We react only to a damage event or to the game taking movement control away.
-local function clearAntiKnockbackConnections()
-	if CFG.antiKnockbackBrakeConn then
-		pcall(function() CFG.antiKnockbackBrakeConn:Disconnect() end)
-		CFG.antiKnockbackBrakeConn = nil
-	end
-	for _, conn in ipairs(CFG.antiKnockbackConns) do
-		pcall(function() conn:Disconnect() end)
-	end
-	CFG.antiKnockbackConns = {}
-end
-
-local function bindAntiKnockback()
-	clearAntiKnockbackConnections()
-	if not CFG.antiKnockbackOn then return end
-
-	local hum = getHum()
-	if not hum then return end
-	local lastHealth = hum.Health
-	local function stopImpact(restoreControl)
-		-- Fly uses PlatformStand and high velocity by design, so this feature must
-		-- never change either one while flight is active.
-		if not CFG.antiKnockbackOn or flyOn then return end
-		local hrp = getHRP()
-		if hrp then
-			hrp.AssemblyLinearVelocity = Vector3.zero
-			hrp.AssemblyAngularVelocity = Vector3.zero
-		end
-		if restoreControl then
-			hum.PlatformStand = false
-			hum.Sit = false
-			pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
-			pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
-		end
-		-- Guard hits can apply their force over several consecutive physics
-		-- frames. Brake only this short, confirmed-hit window; never inspect
-		-- normal speed or position, and never alter CFrame.
-		if CFG.antiKnockbackBrakeConn then
-			pcall(function() CFG.antiKnockbackBrakeConn:Disconnect() end)
-		end
-		local untilTime = tick() + 0.45
-		local brakeConn
-		brakeConn = RunService.Heartbeat:Connect(function()
-			if not CFG.antiKnockbackOn or flyOn or tick() >= untilTime then
-				if brakeConn then
-					pcall(function() brakeConn:Disconnect() end)
-				end
-				if CFG.antiKnockbackBrakeConn == brakeConn then
-					CFG.antiKnockbackBrakeConn = nil
-				end
-				return
-			end
-			local currentRoot = getHRP()
-			if currentRoot then
-				currentRoot.AssemblyLinearVelocity = Vector3.zero
-				currentRoot.AssemblyAngularVelocity = Vector3.zero
-			end
-		end)
-		CFG.antiKnockbackBrakeConn = brakeConn
-	end
-
-	table.insert(CFG.antiKnockbackConns, hum.HealthChanged:Connect(function(health)
-		if health < lastHealth then stopImpact(false) end
-		lastHealth = health
-	end))
-	table.insert(CFG.antiKnockbackConns, hum.StateChanged:Connect(function(_, state)
-		if state == Enum.HumanoidStateType.Physics
-			or state == Enum.HumanoidStateType.Ragdoll
-			or state == Enum.HumanoidStateType.FallingDown then
-			stopImpact(true)
-		end
-	end))
-	table.insert(CFG.antiKnockbackConns, hum:GetPropertyChangedSignal("PlatformStand"):Connect(function()
-		if hum.PlatformStand then stopImpact(true) end
-	end))
-	table.insert(CFG.antiKnockbackConns, hum:GetPropertyChangedSignal("Sit"):Connect(function()
-		if hum.Sit then stopImpact(true) end
-	end))
-end
-
-local function setAntiKnockback(on)
-	CFG.antiKnockbackOn = on and true or false
-	bindAntiKnockback()
 end
 
 -- The movement driver uses CFrame steps, so it must never cross a solid wall.
@@ -3434,11 +3344,6 @@ function Api.setNoClip(on)
 	setStatus(on and "No Clip on" or "No Clip off")
 end
 
-function Api.setAntiKnockback(on)
-	setAntiKnockback(on)
-	setStatus(on and "Anti Knockback on" or "Anti Knockback off")
-end
-
 function Api.destroy()
 	autoFarm = false
 	stopAuraFollowMotion()
@@ -3446,7 +3351,6 @@ function Api.destroy()
 	restoreManualRunAnimation()
 	setInfiniteJump(false)
 	setNoClip(false)
-	setAntiKnockback(false)
 	walkSpeedOn = false
 	cancelManualDeliverAssist()
 	espFlags.players, espFlags.eggs, espFlags.beasts = false, false, false
@@ -3461,9 +3365,6 @@ end
 
 LP.CharacterAdded:Connect(function()
 	task.wait(0.45)
-	if CFG.antiKnockbackOn then
-		bindAntiKnockback()
-	end
 	if autoFarm then
 		swapStealHumanoid()
 		patchRigSyncKnockback()

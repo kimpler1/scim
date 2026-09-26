@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V132
+  VER: V128
 ]]
 
-local GLITCH_UI_VER = "V132"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v132"
+local GLITCH_UI_VER = "V128"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v128"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -75,7 +75,7 @@ local LOCALES = {
 		General = "Общее", Main = "Главное", Player = "Игрок", Auto = "Авто", Language = "Язык",
 		["More scripts for different places"] = "Больше скриптов на разные плейсы", ["Steal All Eggs"] = "Забрать все яйца",
 		["Steal Best Egg"] = "Забрать лучшее яйцо", ["Recover Dropped Eggs"] = "Подобрать упавшие яйца",
-		["Bat Aura"] = "Аура биты", ["Anti Knockback"] = "Анти-отброс", ["ESP Players"] = "ESP игроков", ["ESP Eggs"] = "ESP яиц",
+		["Bat Aura"] = "Аура биты", ["ESP Players"] = "ESP игроков", ["ESP Eggs"] = "ESP яиц",
 		Speed = "Скорость", ["Walk Speed"] = "Скорость ходьбы", Fly = "Полёт", ["Fly Speed"] = "Скорость полёта",
 		["Infinite Jump"] = "Бесконечный прыжок", ["No Clip"] = "Без столкновений",
 		["Auto Plant All Eggs"] = "Авто посадка всех яиц", ["Auto Hatch Eggs"] = "Авто вылупление яиц",
@@ -1094,12 +1094,6 @@ carrierToggle = makeToggle(mainPage, "Bat Aura", false, function(on)
 		coreApi.stopFarm()
 		setStatus("Bat aura off")
 	end
-end)
-
-makeToggle(mainPage, "Anti Knockback", false, function(on)
-	if not loadCore() then return end
-	pushConfig()
-	if coreApi.setAntiKnockback then coreApi.setAntiKnockback(on) end
 end)
 
 prevB.MouseButton1Click:Connect(function()
