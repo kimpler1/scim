@@ -1,11 +1,11 @@
 --[[
   Glitch — Steal An Egg UI (glass / sidebar)
   Tabs: Main | ESP | Player
-  VER: V121
+  VER: V122
 ]]
 
-local GLITCH_UI_VER = "V121"
-local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v121"
+local GLITCH_UI_VER = "V122"
+local CORE_URL = "https://raw.githubusercontent.com/kimpler1/scim/main/Glitch_Core.lua?cb=v122"
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -80,7 +80,7 @@ local LOCALES = {
 		Speed = "Скорость", ["Walk Speed"] = "Скорость ходьбы", Fly = "Полёт", ["Fly Speed"] = "Скорость полёта",
 		["Infinite Jump"] = "Бесконечный прыжок", ["No Clip"] = "Без столкновений",
 		["Auto Plant All Eggs"] = "Авто посадка всех яиц", ["Auto Hatch Eggs"] = "Авто вылупление яиц",
-		["Auto Deploy Best Pets"] = "Авторазмещение лучших питомцев", ["Auto Recall All Pets"] = "Автовозврат всех питомцев",
+		["Auto Deploy Best Pets"] = "Авторазмещение лучших питомцев",
 		["Link copied"] = "Ссылка скопирована",
 		["Link unavailable"] = "Ссылка недоступна",
 	},
@@ -1190,8 +1190,8 @@ noClipToggle = makeToggle(playerPage, "No Clip", false, function(on)
 end)
 
 -- AUTO
-local autoRequested = { plant = false, hatch = false, deploy = false, recall = false }
-local autoRequestRunning = { plant = false, hatch = false, deploy = false, recall = false }
+local autoRequested = { plant = false, hatch = false, deploy = false }
+local autoRequestRunning = { plant = false, hatch = false, deploy = false }
 
 local function applyAutoRequest(action)
 	if autoRequestRunning[action] then return end
@@ -1230,7 +1230,6 @@ end
 autoActionToggle("Auto Plant All Eggs", "plant")
 autoActionToggle("Auto Hatch Eggs", "hatch")
 autoActionToggle("Auto Deploy Best Pets", "deploy")
-autoActionToggle("Auto Recall All Pets", "recall")
 
 -- default page
 generalPage.Visible = true
