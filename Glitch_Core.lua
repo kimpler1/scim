@@ -2,7 +2,7 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V129
+  VER: V130
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
@@ -10,7 +10,7 @@
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
 ]]
 
-local GLITCH_CORE_VER = "V129"
+local GLITCH_CORE_VER = "V130"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -66,7 +66,7 @@ local CFG = {
 	antiKnockbackOn = false,
 	antiKnockbackConn = nil,
 	antiKnockbackSafeCFrame = nil,
-	antiKnockbackHoldUntil = 0,
+	antiKnockbackWasRagdolled = false,
 	status = function() end,
 }
 
@@ -576,9 +576,9 @@ local function anchor(hrp, cf)
 	hrp.AssemblyAngularVelocity = Vector3.zero
 end
 
--- Standalone anti-knockback: retain the last stable position when an impact
--- applies ragdoll, a launch velocity, or a forced long CFrame displacement.
--- It deliberately leaves the working farm route untouched between impacts.
+-- Standalone anti-knockback reacts only to an actual impact. It never holds
+-- the character's CFrame during ordinary walking, which would feel like an
+-- invisible wall.
 local function setAntiKnockback(on)
 	CFG.antiKnockbackOn = on and true or false
 	if not CFG.antiKnockbackOn then
@@ -587,7 +587,7 @@ local function setAntiKnockback(on)
 			CFG.antiKnockbackConn = nil
 		end
 		CFG.antiKnockbackSafeCFrame = nil
-		CFG.antiKnockbackHoldUntil = 0
+		CFG.antiKnockbackWasRagdolled = false
 		return
 	end
 	local root = getHRP()
@@ -604,19 +604,21 @@ local function setAntiKnockback(on)
 			or state == Enum.HumanoidStateType.Physics
 			or state == Enum.HumanoidStateType.Ragdoll
 			or state == Enum.HumanoidStateType.FallingDown)
-		local launched = velocity.Magnitude > 85
-		local displaced = safe and (hrp.Position - safe.Position).Magnitude > 28
-		if ragdolled or launched or displaced then
-			CFG.antiKnockbackHoldUntil = tick() + 0.45
-		end
-		if safe and tick() < (CFG.antiKnockbackHoldUntil or 0) then
-			hrp.CFrame = safe
+		local launched = velocity.Magnitude > 100
+		local displaced = safe and (hrp.Position - safe.Position).Magnitude > 32
+		local newRagdoll = ragdolled and not CFG.antiKnockbackWasRagdolled
+		CFG.antiKnockbackWasRagdolled = ragdolled
+		-- Handle the transition into ragdoll once.  Reapplying this every
+		-- heartbeat can fight normal player movement on games that briefly
+		-- report Physics while walking.
+		if launched or displaced or newRagdoll then
+			if safe and displaced then hrp.CFrame = safe end
 			hrp.AssemblyLinearVelocity = Vector3.zero
 			hrp.AssemblyAngularVelocity = Vector3.zero
-			if not flyOn then
+			if ragdolled and not flyOn then
 				hum.PlatformStand = false
 				hum.Sit = false
-				pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+				if newRagdoll then pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end) end
 			end
 			return
 		end
