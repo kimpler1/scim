@@ -2,7 +2,7 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V131
+  VER: V132
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
@@ -10,7 +10,7 @@
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
 ]]
 
-local GLITCH_CORE_VER = "V131"
+local GLITCH_CORE_VER = "V132"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -65,6 +65,7 @@ local CFG = {
 	acStatus = "off",
 	antiKnockbackOn = false,
 	antiKnockbackConns = {},
+	antiKnockbackBrakeConn = nil,
 	status = function() end,
 }
 
@@ -578,6 +579,10 @@ end
 -- deliberately not used here: both are normal while flying or moving quickly.
 -- We react only to a damage event or to the game taking movement control away.
 local function clearAntiKnockbackConnections()
+	if CFG.antiKnockbackBrakeConn then
+		pcall(function() CFG.antiKnockbackBrakeConn:Disconnect() end)
+		CFG.antiKnockbackBrakeConn = nil
+	end
 	for _, conn in ipairs(CFG.antiKnockbackConns) do
 		pcall(function() conn:Disconnect() end)
 	end
@@ -606,6 +611,31 @@ local function bindAntiKnockback()
 			pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
 			pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
 		end
+		-- Guard hits can apply their force over several consecutive physics
+		-- frames. Brake only this short, confirmed-hit window; never inspect
+		-- normal speed or position, and never alter CFrame.
+		if CFG.antiKnockbackBrakeConn then
+			pcall(function() CFG.antiKnockbackBrakeConn:Disconnect() end)
+		end
+		local untilTime = tick() + 0.45
+		local brakeConn
+		brakeConn = RunService.Heartbeat:Connect(function()
+			if not CFG.antiKnockbackOn or flyOn or tick() >= untilTime then
+				if brakeConn then
+					pcall(function() brakeConn:Disconnect() end)
+				end
+				if CFG.antiKnockbackBrakeConn == brakeConn then
+					CFG.antiKnockbackBrakeConn = nil
+				end
+				return
+			end
+			local currentRoot = getHRP()
+			if currentRoot then
+				currentRoot.AssemblyLinearVelocity = Vector3.zero
+				currentRoot.AssemblyAngularVelocity = Vector3.zero
+			end
+		end)
+		CFG.antiKnockbackBrakeConn = brakeConn
 	end
 
 	table.insert(CFG.antiKnockbackConns, hum.HealthChanged:Connect(function(health)
