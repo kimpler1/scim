@@ -2,7 +2,7 @@
   Glitch Core — Steal An Egg
   Farm: V18 path plus clean reset/retry after a failed guard sequence.
   WS/Fly/ESP: Best Version V25 (unchanged).
-  VER: V120
+  VER: V121
   FROZEN (LO 2026-09-16):
     - Autofarm = V18 guardHitThenRegrab / peelThenEscape / farmOnce with clean retry
     - WS + Fly: V25 scrub @0.2s, unanchored velocity fly
@@ -10,7 +10,7 @@
     - Original Humanoid is restored after Auto Farm for normal controls and jumping
 ]]
 
-local GLITCH_CORE_VER = "V120"
+local GLITCH_CORE_VER = "V121"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -185,7 +185,6 @@ local function bindGame()
 	local Data = ch(ReplicatedStorage, "Data", 2)
 
 	EggState = Client and req(Client, "Egg" .. "State", 2)
-	local HaulState = Client and (req(Client, "Haul" .. "State", 1) or req(Client, "Pet" .. "State", 1))
 	PlotState = Client and req(Client, "Plot" .. "State", 2)
 	CFG.hatchAnimation = Client and req(Client, "Hatch" .. "Animation", 1)
 	SaveModule = Shared and req(Shared, "Save", 2)
@@ -207,7 +206,6 @@ local function bindGame()
 	WearEggToolFn = pick(EggState, "WearEggTool", "RequestEquipTool")
 	PlantEggFn = pick(EggState, "PlantEgg", "RequestPlaceEgg")
 	CFG.readOwnedEggsFn = pick(EggState, "ReadOwnerEggs", "ReadOwnedEggs", "GetOwnedEggs", "ReadLocalEggs")
-	CFG.recallPetsFn = pick(HaulState, "DoffAll", "UnequipAll", "RecallAll", "ReturnAllPets")
 
 	local placeRemote = CFG.findEggWorldRemote("AskPlaceEgg", "PlaceEgg")
 	local wearRemote = CFG.findEggWorldRemote("AskWearTool", "WearEggTool")
@@ -230,16 +228,10 @@ local function bindGame()
 
 	EquipBestPetsRemote = findRemoteByPathOrName("RF/Haul/WearBest", "WearBest")
 		or findRemoteByPathOrName("RF/PenRoster/ConfirmEquipBestBadge", "ConfirmEquipBestBadge")
-	CFG.recallPetsRemote = nil
-	for _, remoteSpec in ipairs({
-		{ "RF/Haul/DoffAll", "DoffAll" },
-		{ "RF/Haul/UnequipAll", "UnequipAll" },
-		{ "RF/Haul/RecallAll", "RecallAll" },
-		{ "RF/PenRoster/DoffAll", "DoffAll" },
-	}) do
-		CFG.recallPetsRemote = findRemoteByPathOrName(remoteSpec[1], remoteSpec[2])
-		if CFG.recallPetsRemote then break end
-	end
+	-- Confirmed from the game's own manual "take pet" action. It accepts one
+	-- equipped pet UID, so the recall routine only invokes it for pets listed
+	-- in the local EquippedAssets save table.
+	CFG.recallPetsRemote = findRemoteByPathOrName("RF/PenRoster/AskWear", "AskWear")
 	BatSwingRemote = findRemoteByPathOrName("BatSwing/Trigger", "BatSwing")
 
 	-- Oxide: Packages.Networking["RF/EggWorld/AskFieldEggCarry"]
@@ -305,7 +297,7 @@ local function bindGame()
 	end
 
 	Bound = EggState ~= nil or PlantEggFn ~= nil or BeginHatchFn ~= nil or EquipBestPetsRemote ~= nil
-		or CFG.recallPetsFn ~= nil or CFG.recallPetsRemote ~= nil
+		or CFG.recallPetsRemote ~= nil
 	return Bound
 end
 
@@ -1664,27 +1656,73 @@ local function autoHatchReadyEggs()
 	return count
 end
 
--- "WearBest" equips the server's best pets.  Recall uses only an explicit
--- Doff/Unequip/Recall-all game endpoint; it never sells or deletes a pet.
+-- Return the UIDs of pets currently placed in the world. EquippedAssets has
+-- appeared as both a uid-keyed map and a list in game updates, so accept both
+-- shapes. We deliberately do not fall back to all Inventory pets: that could
+-- put away a pet which was never deployed.
+CFG.getEquippedPetUids = function()
+	local save = getSave()
+	local inventory = save and save.Inventory
+	local equipped = save and save.EquippedAssets
+	local found, result = {}, {}
+	if typeof(equipped) ~= "table" then return result end
+	for key, value in pairs(equipped) do
+		local uid
+		if typeof(key) == "string" then
+			uid = key
+		elseif typeof(value) == "string" then
+			uid = value
+		elseif typeof(value) == "table" then
+			uid = value.Uid or value.UID or value.AssetUid or value.AssetUID
+		end
+		if typeof(uid) == "string" and not found[uid]
+			and (typeof(inventory) ~= "table" or inventory[uid] ~= nil) then
+			found[uid] = true
+			table.insert(result, uid)
+		end
+	end
+	table.sort(result)
+	return result
+end
+
+-- "WearBest" deploys the server's best pets. The verified AskWear request
+-- returns one deployed pet per UID; it never sells or deletes a pet.
 CFG.runPetAction = function(action)
 	if action ~= "deploy" and action ~= "recall" then return false end
 	if CFG.petActionBusy[action] then return false end
 	local remote = action == "deploy" and EquipBestPetsRemote or CFG.recallPetsRemote
 	local title = action == "deploy" and "Deploy best pets" or "Recall all pets"
-	if not remote and not (action == "recall" and CFG.recallPetsFn) then
+	if not remote then
 		setStatus(title .. ": game API not found")
 		return false
 	end
 	CFG.petActionBusy[action] = true
-	local ok, via
-	if action == "recall" and CFG.recallPetsFn then
-		local ran, result = pcall(CFG.recallPetsFn)
-		ok = ran and result ~= false
-		via = "Client pet module"
-	else
-		ok = invokeRemote(remote)
-		via = CFG.describeRemote(remote)
+	local ok, via = false, CFG.describeRemote(remote)
+	if action == "recall" then
+		local pets = CFG.getEquippedPetUids()
+		if #pets == 0 then
+			CFG.petActionBusy[action] = false
+			setStatus(title .. ": no deployed pets found")
+			return true
+		end
+		local recalled = 0
+		for _, uid in ipairs(pets) do
+			if not autoActions.recall then break end
+			local sent = invokeRemote(remote, uid)
+			if sent then recalled += 1 end
+			task.wait(0.12)
+		end
+		ok = recalled == #pets
+		CFG.petActionBusy[action] = false
+		if recalled > 0 then
+			setStatus(('%s: %d/%d sent via %s'):format(title, recalled, #pets, via))
+		else
+			local detail = CFG.lastRemoteError or CFG.lastRemoteResult or "server rejected request"
+			setStatus(title .. ": failed via " .. via .. " — " .. tostring(detail))
+		end
+		return ok
 	end
+	ok = invokeRemote(remote)
 	CFG.petActionBusy[action] = false
 	if ok then
 		setStatus(title .. ": sent via " .. via)
@@ -3286,7 +3324,7 @@ function Api.setAutoAction(name, on)
 		local waiting = (name == "plant" and not PlantEggFn)
 			or (name == "hatch" and (not IsEggReadyFn or not BeginHatchFn or not FinishHatchFn))
 			or (name == "deploy" and not EquipBestPetsRemote)
-			or (name == "recall" and not CFG.recallPetsFn and not CFG.recallPetsRemote)
+			or (name == "recall" and not CFG.recallPetsRemote)
 		setStatus(waiting and ("Auto " .. name .. " waiting for game API") or ("Auto " .. name .. " on"))
 		-- Pet actions must not wait for a potentially long plant/hatch scan.
 		-- One game request handles the complete equip or recall operation.
